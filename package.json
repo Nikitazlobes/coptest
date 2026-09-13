@@ -1,0 +1,12 @@
+{
+  "name": "copt-pdf-import",
+  "version": "1.0.0",
+  "description": "Full bundle for PDF Order import into TGShop with fixed WorkerSrc",
+  "main": "worker.js",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
