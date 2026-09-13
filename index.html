@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TGShop Admin Panel & Store</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Подключение локальных файлов pdf.js и worker -->
+  <script src="pdf.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --accent-color: #38bdf8;
+      --accent-hover: #0284c7;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 20px;
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--accent-color);
+      color: #0f172a;
+      border-color: var(--accent-color);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 15px;
+    }
+    .product-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .product-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; color: var(--text-main); }
+    .product-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+    .price-tag { font-size: 18px; font-weight: bold; color: var(--accent-color); }
+    .cost-tag { font-size: 12px; color: var(--text-muted); }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card h3 { font-size: 16px; margin-bottom: 15px; color: var(--accent-color); }
+    .form-group { margin-bottom: 15px; }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      padding: 12px;
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent-color);
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+    .form-row .form-group { flex: 1; }
+
+    .btn {
+      background: var(--accent-color);
+      color: #0f172a;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      font-size: 15px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: var(--accent-hover); color: #fff; }
+    .btn-secondary { background: #334155; color: #fff; margin-top: 10px; }
+    .btn-danger { background: var(--error); color: #fff; margin-top: 10px; padding: 8px 12px; font-size: 13px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+    th, td { border: 1px solid var(--border-color); padding: 10px; text-align: left; }
+    th { background: #0f172a; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>🏪 TGShop Админка</h2>
+    <span id="userInfo" style="font-size:12px; color: var(--text-muted);">Telegram WebApp</span>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('catalog')">📦 Витрина товара</button>
+    <button class="tab-btn" onclick="switchTab('admin')">➕ Добавить товар</button>
+  </div>
+
+  <div id="catalogTab" class="tab-content active">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <h3>Список товаров на витрине (<span id="totalProductsCount">0</span>)</h3>
+    </div>
+    <div id="productGrid" class="product-grid"></div>
+  </div>
+
+  <div id="adminTab" class="tab-content">
+    <div class="card">
+      <h3>➕ Добавление нового товара</h3>
+      <form id="addProductForm" onsubmit="handleManualAddProduct(event)">
+        <div class="form-group">
+          <label>Наименование товара *</label>
+          <input type="text" id="pTitle" placeholder="Например: Жидкость Elfbar 30ml" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Цена продажи (₽) *</label>
+            <input type="number" id="pPrice" step="0.01" placeholder="800" required>
+          </div>
+          <div class="form-group">
+            <label>Себестоимость / Закуп (₽)</label>
+            <input type="number" id="pCostPrice" step="0.01" placeholder="450">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Количество на складе *</label>
+            <input type="number" id="pQuantity" placeholder="10" value="1" required>
+          </div>
+          <div class="form-group">
+            <label>Единица измерения</label>
+            <select id="pUnit">
+              <option value="шт">шт</option>
+              <option value="упак">упак</option>
+              <option value="флак">флак</option>
+              <option value="кг">кг</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="btn">Сохранить и выставить на витрину</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>📄 Загрузка накладной PDF (Импорт списка)</h3>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+        Выберите файл накладной в формате PDF для парсинга и добавления в каталог.
+      </p>
+      <input type="file" id="pdfFileInput" accept="application/pdf">
+      <button class="btn btn-secondary" onclick="parsePdfInvoice()">Распознать накладную</button>
+      <div id="importStatus" style="margin-top: 10px; font-size: 13px; font-weight: bold;"></div>
+
+      <div style="overflow-x: auto;">
+        <table id="parsedTable">
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Наименование</th>
+              <th>Кол-во</th>
+              <th>Закупка</th>
+              <th>Сумма</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button class="btn" id="savePdfToStoreBtn" style="display:none; margin-top: 15px;" onclick="applyPdfImportToStore()">
+        ✅ Добавить все позиции из накладной в магазин
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Указываем локальный worker файл
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.js';
+
+    let tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand();
+      if (tg.initDataUnsafe?.user) {
+        document.getElementById('userInfo').textContent = '@' + (tg.initDataUnsafe.user.username || 'admin');
+      }
+    }
+
+    let storeProducts = JSON.parse(localStorage.getItem('tgshop_products') || '[]');
+    let currentParsedItems = [];
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      if (tabName === 'catalog') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('catalogTab').classList.add('active');
+        renderCatalog();
+      } else {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('adminTab').classList.add('active');
+      }
+    }
+
+    function renderCatalog() {
+      const grid = document.getElementById('productGrid');
+      const count = document.getElementById('totalProductsCount');
+      grid.innerHTML = '';
+      count.textContent = storeProducts.length;
+
+      if (!storeProducts.length) {
+        grid.innerHTML = '<p style="color: var(--text-muted); grid-column: 1/-1; text-align: center; padding: 20px;">Каталог пуст. Добавьте товары через вкладку "Добавить товар".</p>';
+        return;
+      }
+
+      storeProducts.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'product-card';
+        card.innerHTML = `
+          <div>
+            <div class="product-title">${item.title}</div>
+            <div class="product-meta">Остаток: <b>${item.quantity} ${item.unit}</b></div>
+          </div>
+          <div>
+            <div class="price-tag">${(item.price || item.cost_price).toFixed(2)} ₽</div>
+            ${item.cost_price ? `<div class="cost-tag">Закупка: ${item.cost_price.toFixed(2)} ₽</div>` : ''}
+            <button class="btn btn-danger" onclick="deleteProduct(${index})">Удалить</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function handleManualAddProduct(e) {
+      e.preventDefault();
+      const title = document.getElementById('pTitle').value.trim();
+      const price = parseFloat(document.getElementById('pPrice').value);
+      const costPrice = parseFloat(document.getElementById('pCostPrice').value) || price;
+      const quantity = parseInt(document.getElementById('pQuantity').value, 10);
+      const unit = document.getElementById('pUnit').value;
+
+      const newProduct = {
+        id: Date.now(),
+        title: title,
+        price: price,
+        cost_price: costPrice,
+        quantity: quantity,
+        unit: unit
+      };
+
+      storeProducts.push(newProduct);
+      localStorage.setItem('tgshop_products', JSON.stringify(storeProducts));
+
+      alert('Товар "' + title + '" успешно добавлен на витрину!');
+      document.getElementById('addProductForm').reset();
+      switchTab('catalog');
+    }
+
+    function deleteProduct(index) {
+      if (confirm('Удалить данный товар?')) {
+        storeProducts.splice(index, 1);
+        localStorage.setItem('tgshop_products', JSON.stringify(storeProducts));
+        renderCatalog();
+      }
+    }
+
+    async function parsePdfInvoice() {
+      const fileInput = document.getElementById('pdfFileInput');
+      const status = document.getElementById('importStatus');
+      const tbody = document.querySelector('#parsedTable tbody');
+
+      tbody.innerHTML = '';
+      currentParsedItems = [];
+
+      if (!fileInput.files.length) {
+        status.style.color = 'var(--error)';
+        status.textContent = 'Пожалуйста, выберите PDF файл!';
+        return;
+      }
+
+      status.style.color = 'var(--warning)';
+      status.textContent = 'Обработка PDF...';
+
+      try {
+        const file = fileInput.files[0];
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          
+          let lastY = null;
+          let pageText = '';
+          for (const item of textContent.items) {
+            if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+              pageText += '\n';
+            }
+            pageText += item.str + ' ';
+            lastY = item.transform[5];
+          }
+          fullText += pageText + '\n';
+        }
+
+        currentParsedItems = parseTextToProducts(fullText);
+
+        if (!currentParsedItems.length) {
+          status.style.color = 'var(--error)';
+          status.textContent = 'Товары в PDF не найдены или не распознаны.';
+          return;
+        }
+
+        status.style.color = 'var(--success)';
+        status.textContent = `Успешно распознано позиций: ${currentParsedItems.length}`;
+
+        currentParsedItems.forEach((item, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${item.title}</td>
+            <td>${item.quantity}</td>
+            <td><b>${item.cost_price.toFixed(2)} ₽</b></td>
+            <td>${item.total_sum.toFixed(2)} ₽</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        document.getElementById('savePdfToStoreBtn').style.display = 'block';
+
+      } catch (err) {
+        console.error(err);
+        status.style.color = 'var(--error)';
+        status.textContent = 'Ошибка распознавания: ' + err.message;
+      }
+    }
+
+    function parseTextToProducts(text) {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const products = [];
+      const rowPattern = /^(?:\|\s*)?(\d+)\s+(.+?)\s*\|?\s*([\d\s\.,]+)\s*\|?\s*(\d+)\s*\|?\s*([а-яА-Яa-zA-Z]+|\b)\s*\|?\s*([\d\s\.,]+)/;
+
+      let currentItem = null;
+
+      for (let line of lines) {
+        const cleanLine = line.replace(/^\|/, '').trim();
+        const match = cleanLine.match(rowPattern);
+
+        if (match) {
+          if (currentItem) products.push(currentItem);
+          
+          const costPrice = parseFloat(match[3].replace(/\s/g, '').replace(',', '.'));
+          const totalAmount = parseFloat(match[6].replace(/\s/g, '').replace(',', '.'));
+
+          currentItem = {
+            id: Date.now() + Math.random(),
+            title: match[2].trim(),
+            price: costPrice,
+            cost_price: costPrice,
+            quantity: parseInt(match[4], 10),
+            unit: match[5] || 'шт',
+            total_sum: totalAmount
+          };
+        } else if (currentItem) {
+          if (!line.includes('Итого') && !line.includes('ЗАКАЗ №') && !line.includes('Заказчик') && !line.includes('Наименование')) {
+            if (!line.startsWith('|')) {
+              currentItem.title += ' ' + line.trim();
+            }
+          }
+        }
+      }
+
+      if (currentItem) products.push(currentItem);
+      return products;
+    }
+
+    function applyPdfImportToStore() {
+      if (!currentParsedItems.length) return;
+      storeProducts = [...storeProducts, ...currentParsedItems];
+      localStorage.setItem('tgshop_products', JSON.stringify(storeProducts));
+      alert('Все позиции из накладной успешно внесены в каталог!');
+      switchTab('catalog');
+    }
+
+    renderCatalog();
+  </script>
+</body>
+</html>
