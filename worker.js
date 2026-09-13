@@ -1,0 +1,204 @@
+const ADMIN_KEY = "shop-admin-7f4c2a91";
+
+const HTML = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>C-OPT EST</title><script src="https://telegram.org/js/telegram-web-app.js"></script><style>
+:root{--bg:#07111d;--card:rgba(19,31,48,.78);--line:rgba(255,255,255,.09);--text:#f4f7fb;--muted:#8fa0b5;--a:#16d7c4;--b:#5b67ff}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 10% 0,#123b45 0,transparent 35%),radial-gradient(circle at 90% 10%,#27204f 0,transparent 38%),var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,sans-serif}button,input{font:inherit}button{border:0}.wrap{max-width:720px;margin:auto;padding:18px 14px 90px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.brand{font-size:22px;font-weight:800}.pill{padding:8px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.05);color:var(--muted)}.hero{padding:22px;border-radius:26px;background:linear-gradient(135deg,rgba(22,215,196,.18),rgba(91,103,255,.2));border:1px solid var(--line);margin-bottom:16px}.hero h1{margin:0 0 8px;font-size:30px}.hero p{margin:0;color:var(--muted)}.search{width:100%;padding:14px 16px;border-radius:17px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:white;outline:none;margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px;backdrop-filter:blur(18px)}.emoji{height:110px;border-radius:15px;background:linear-gradient(135deg,rgba(22,215,196,.18),rgba(91,103,255,.2));display:grid;place-items:center;font-size:46px;margin-bottom:12px}.name{font-weight:750;min-height:42px}.meta{font-size:13px;color:var(--muted);margin:6px 0 10px}.price{font-size:19px;font-weight:800;margin-bottom:10px}.btn{width:100%;padding:12px;border-radius:14px;background:linear-gradient(90deg,var(--a),var(--b));color:white;font-weight:800}.nav{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:min(690px,calc(100% - 20px));display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px;border:1px solid var(--line);background:rgba(7,17,29,.88);backdrop-filter:blur(20px);border-radius:20px}.nav button{background:transparent;color:var(--muted);padding:8px 2px;border-radius:12px}.nav button.active{color:white;background:rgba(255,255,255,.08)}.section{margin-top:18px}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.list{display:grid;gap:10px}.item{padding:14px;border:1px solid var(--line);border-radius:17px;background:rgba(255,255,255,.04)}.empty{text-align:center;color:var(--muted);padding:40px 10px}.admin input,.admin textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0b1725;color:white;margin:5px 0}.admin .btn{margin-top:8px}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.stat{padding:15px;border-radius:17px;border:1px solid var(--line);background:rgba(255,255,255,.04)}.stat b{font-size:23px}.danger{background:#8b2e45}.small{font-size:12px;color:var(--muted)}@media(min-width:600px){.grid{grid-template-columns:repeat(3,1fr)}}
+</style></head><body><div id="app"></div><script>
+const ADMIN_KEY = "shop-admin-7f4c2a91";
+const tg=window.Telegram?.WebApp; tg?.ready(); tg?.expand();
+let products=[],orders=[],page='shop',admin=false;
+let cart={}; try{cart=JSON.parse(localStorage.getItem('cart')||'{}')||{}}catch(e){cart={}}
+const api=async(u,o)=>{const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),12000);try{const r=await fetch(u,{...(o||{}),signal:ctl.signal});const text=await r.text();let data;try{data=JSON.parse(text)}catch(e){data={error:text||('HTTP '+r.status)}};if(!r.ok && !data.error)data.error='HTTP '+r.status;return data}finally{clearTimeout(t)}};
+function money(n){return new Intl.NumberFormat('ru-RU').format(n)+' ₽'}
+async function load(){render();try{const r=await api('/api/products');products=Array.isArray(r)?r:[];render()}catch(e){products=[];render()}}
+function add(id){cart[id]=(cart[id]||0)+1;try{localStorage.setItem('cart',JSON.stringify(cart))}catch(e){};render()}
+function total(){return products.reduce((s,p)=>s+(cart[p.id]||0)*p.price,0)}
+function render(){const a=document.getElementById('app');if(page==='admin'){renderAdmin(a);return}let q='';let visible=products;if(page==='shop'){q='<input class="search" placeholder="Поиск товара" oninput="filter(this.value)">';}if(page==='cart'){const rows=products.filter(p=>cart[p.id]);q='<div class="section"><h2>Корзина</h2><div class="list">'+(rows.length?rows.map(p=>\`<div class=item><div class=row><b>\${p.name}</b><b>\${money(p.price*(cart[p.id]||0))}</b></div><div class=small>\${cart[p.id]} × \${money(p.price)}</div></div>\`).join(''):'<div class=empty>Корзина пуста</div>')+'</div>'+(rows.length?\`<div class=item style="margin-top:12px"><div class=row><b>Итого</b><b>\${money(total())}</b></div><button class=btn onclick="checkout()">Оформить заказ</button></div>\`:'');}
+if(page==='orders'){q='<div class=section><h2>Мои заказы</h2><div id=ordersbox class=list><div class=empty>Загрузка...</div></div></div>';setTimeout(loadOrders,0)}
+if(page==='profile'){q='<div class=section><h2>Профиль</h2><div class=item><b>'+((tg?.initDataUnsafe?.user?.first_name)||'Покупатель')+'</b><p class=small>Telegram Mini App</p></div><div class=item style="margin-top:10px"><button class=btn onclick="openAdmin()">Админка</button></div></div>'}
+if(page==='shop')q+=\`<div class=grid id=grid>\${visible.map(card).join('')}</div>\`;
+a.innerHTML=\`<div class=wrap><div class=top><div class=brand>C-OPT EST</div><div class=pill>\${Object.values(cart).reduce((a,b)=>a+b,0)} шт.</div></div>\${page==='shop'?'<div class=hero><h1>Магазин</h1><p>Каталог, корзина и заказы прямо в Telegram.</p></div>':''}\${q}</div><div class=nav><button class="\${page==='shop'?'active':''}" onclick="go('shop')">🏠<br>Каталог</button><button class="\${page==='cart'?'active':''}" onclick="go('cart')">🛒<br>Корзина</button><button class="\${page==='orders'?'active':''}" onclick="go('orders')">📦<br>Заказы</button><button class="\${page==='profile'?'active':''}" onclick="go('profile')">👤<br>Профиль</button></div>\`}
+function card(p){return \`<div class=card><div class=emoji>\${p.emoji||'🛍️'}</div><div class=name>\${p.name}</div><div class=meta>Остаток: \${p.stock}</div><div class=price>\${money(p.price)}</div><button class=btn onclick="add(\${p.id})">В корзину</button></div>\`}
+function filter(v){const g=document.getElementById('grid');g.innerHTML=products.filter(p=>p.name.toLowerCase().includes(v.toLowerCase())).map(card).join('')}
+function go(p){page=p;render()}
+async function checkout(){const items=products.filter(p=>cart[p.id]).map(p=>({product_id:p.id,qty:cart[p.id]}));if(!items.length)return;const r=await api('/api/orders',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items,user:tg?.initDataUnsafe?.user||{}})});if(r.ok){cart={};try{localStorage.removeItem('cart')}catch(e){};alert('Заказ оформлен');go('orders')}else alert(r.error||'Не удалось оформить заказ')}
+async function loadOrders(){const u=encodeURIComponent(tg?.initDataUnsafe?.user?.id||'guest');const r=await api('/api/orders?user='+u);const box=document.getElementById('ordersbox');box.innerHTML=r.length?r.map(o=>\`<div class=item><div class=row><b>Заказ #\${o.id}</b><b>\${money(o.total)}</b></div><div class=small>\${o.status}</div></div>\`).join(''):'<div class=empty>Заказов пока нет</div>'}
+function openAdmin(){const k=prompt('Введите ключ администратора');if(k===ADMIN_KEY){admin=true;page='admin';render()}else if(k)alert('Неверный ключ')}
+function renderAdmin(a){if(!admin){page='profile';render();return}a.innerHTML='<div class="wrap admin"><div class="top"><div class="brand">Админка</div><button class="pill" onclick="go(&quot;shop&quot;)">Магазин</button></div><div class="stats" id="stats">Загрузка...</div><div class="section"><h3>Добавить товар</h3><input id="n" placeholder="Название"><input id="p" type="number" min="0" placeholder="Цена"><input id="c" type="number" min="0" placeholder="Себестоимость"><input id="s" type="number" min="0" placeholder="Остаток"><input id="e" placeholder="Эмодзи" value="🛍️"><textarea id="d" placeholder="Описание"></textarea><button class="btn" onclick="createProduct()">Добавить товар</button></div><div class="section"><h3>Импорт товаров из PDF</h3><div class="item"><div class="small">Цена из PDF будет записана как себестоимость. Количество — остаток.</div><input id="pdfFile" type="file" accept="application/pdf"><input id="markup" type="number" min="0" step="1" value="30" placeholder="Наценка, %"><button class="btn" onclick="parsePdf()">Распознать PDF</button><div id="pdfStatus" class="small" style="margin-top:8px"></div><div id="pdfPreview" class="list" style="margin-top:10px"></div><button id="pdfImportBtn" class="btn" style="display:none" onclick="importPdfRows()">Импортировать товары</button></div></div><div class="section"><h3>Товары</h3><div id="plist" class="list"></div></div><div class="section"><h3>Заказы</h3><div id="olist" class="list"><div class="empty">Загрузка...</div></div></div></div>';loadAdmin()}
+async function loadAdmin(){
+  const stats=document.getElementById('stats'), plist=document.getElementById('plist'), olist=document.getElementById('olist');
+  if(!stats||!plist||!olist)return;
+  stats.innerHTML='<div class="empty">Загрузка статистики…</div>';
+  plist.innerHTML='<div class="empty">Загрузка товаров…</div>';
+  olist.innerHTML='<div class="empty">Загрузка заказов…</div>';
+  try{
+    const s=await api('/api/admin/stats?key='+encodeURIComponent(ADMIN_KEY));
+    if(s.error) throw new Error(s.error);
+    stats.innerHTML='<div class="stat"><span class="small">Выручка</span><br><b>'+money(s.revenue||0)+'</b></div><div class="stat"><span class="small">Прибыль</span><br><b>'+money(s.profit||0)+'</b></div><div class="stat"><span class="small">Заказы</span><br><b>'+(s.orders||0)+'</b></div><div class="stat"><span class="small">Клиенты</span><br><b>'+(s.customers||0)+'</b></div><div class="stat"><span class="small">Товаров</span><br><b>'+(s.products||0)+'</b></div><div class="stat"><span class="small">В работе</span><br><b>'+(s.in_work||0)+'</b></div>';
+  }catch(e){stats.innerHTML='<div class="item">Не удалось загрузить статистику: '+esc(e.message||e)+'</div>'}
+  try{
+    const ps=await api('/api/admin/products?key='+encodeURIComponent(ADMIN_KEY));
+    if(!Array.isArray(ps))throw new Error(ps.error||'Ошибка ответа');
+    plist.innerHTML=ps.length?ps.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name)+'</b><b>'+money(p.price)+'</b></div><div class="small">Остаток: '+p.stock+' · Себестоимость: '+money(p.cost||0)+'</div><div class="row" style="margin-top:8px"><button class="btn" onclick="editProduct('+p.id+')">Изменить</button><button class="btn danger" onclick="deleteProduct('+p.id+')">Удалить</button></div></div>').join(''):'<div class="empty">Товаров пока нет</div>';
+  }catch(e){plist.innerHTML='<div class="item">Не удалось загрузить товары: '+esc(e.message||e)+'</div>'}
+  try{
+    const os=await api('/api/admin/orders?key='+encodeURIComponent(ADMIN_KEY));
+    if(!Array.isArray(os))throw new Error(os.error||'Ошибка ответа');
+    olist.innerHTML=os.length?os.map(o=>'<div class="item"><div class="row"><b>Заказ #'+o.id+'</b><b>'+money(o.total)+'</b></div><div class="small">'+esc(o.customer||'Покупатель')+' · '+(o.created_at||'')+'</div><select onchange="setOrderStatus('+o.id+',this.value)" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:#0b1725;color:white;border:1px solid var(--line)">'+['Новый','В работе','Доставлен','Отменён'].map(x=>'<option '+(o.status===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>').join(''):'<div class="empty">Заказов пока нет</div>';
+  }catch(e){olist.innerHTML='<div class="item">Не удалось загрузить заказы: '+esc(e.message||e)+'</div>'}
+}
+async function createProduct(){
+  const nameEl=document.getElementById('n'), priceEl=document.getElementById('p'), costEl=document.getElementById('c'), stockEl=document.getElementById('s'), emojiEl=document.getElementById('e'), descEl=document.getElementById('d');
+  const body={name:(nameEl?.value||'').trim(),price:Number(priceEl?.value||0),cost:Number(costEl?.value||0),stock:Number(stockEl?.value||0),emoji:emojiEl?.value||'🛍️',description:descEl?.value||''};
+  if(!body.name||!Number.isFinite(body.price)||body.price<0)return alert('Заполни название и цену');
+  const r=await api('/api/admin/products?key='+encodeURIComponent(ADMIN_KEY),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){alert('Товар добавлен');[nameEl,priceEl,costEl,stockEl,descEl].forEach(x=>{if(x)x.value=''});if(emojiEl)emojiEl.value='🛍️';loadAdmin();load()}else alert(r.error||'Ошибка')}
+async function editProduct(id){const p0=await api('/api/admin/products/'+id+'?key='+ADMIN_KEY);if(!p0.id)return alert('Товар не найден');const name=prompt('Название',p0.name);if(name===null)return;const price=prompt('Цена',p0.price);if(price===null)return;const cost=prompt('Себестоимость',p0.cost||0);if(cost===null)return;const stock=prompt('Остаток',p0.stock);if(stock===null)return;const r=await api('/api/admin/products/'+id+'?key='+ADMIN_KEY,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({name,price:+price,cost:+cost,stock:+stock,emoji:p0.emoji,description:p0.description})});if(r.ok){loadAdmin();load()}else alert(r.error||'Ошибка')}
+async function deleteProduct(id){if(!confirm('Удалить товар?'))return;const r=await api('/api/admin/products/'+id+'?key='+ADMIN_KEY,{method:'DELETE'});if(r.ok){loadAdmin();load()}else alert(r.error||'Ошибка')}
+async function setOrderStatus(id,status){const r=await api('/api/admin/orders/'+id+'?key='+ADMIN_KEY,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({status})});if(!r.ok)alert(r.error||'Ошибка')}
+let pdfRows=[];
+async function parsePdf(){
+  const f=document.getElementById('pdfFile')?.files?.[0], status=document.getElementById('pdfStatus'), prev=document.getElementById('pdfPreview'), btn=document.getElementById('pdfImportBtn');
+  if(!f){alert('Выбери PDF-файл');return}
+  if(f.type && f.type!=='application/pdf' && !/\.pdf$/i.test(f.name)){alert('Нужен PDF-файл');return}
+  status.textContent='Распознавание PDF…'; prev.innerHTML=''; btn.style.display='none';
+  pdfRows=[];
+  try{
+    const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
+    const data=new Uint8Array(await f.arrayBuffer());
+    const pdf=await pdfjs.getDocument({data,disableWorker:true}).promise;
+    const lines=[];
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i), tc=await page.getTextContent();
+      const rows=[];
+      for(const it of tc.items){
+        const str=String(it.str||'').replace(/\s+/g,' ').trim();
+        if(!str)continue;
+        const x=Number(it.transform?.[4]||0), y=Number(it.transform?.[5]||0);
+        let row=rows.find(r=>Math.abs(r.y-y)<=3);
+        if(!row){row={y,items:[]};rows.push(row)}
+        row.items.push({x,str});
+      }
+      rows.sort((a,b)=>b.y-a.y);
+      for(const row of rows){
+        row.items.sort((a,b)=>a.x-b.x);
+        const line=row.items.map(v=>v.str).join(' ').replace(/\s+/g,' ').trim();
+        if(line)lines.push(line);
+      }
+    }
+
+    const parsed=[];
+    const normalizeNum=v=>Number(String(v||'').replace(/[\u00a0 ]/g,'').replace(',', '.').replace(/[^\d.-]/g,''));
+    const add=(name,cost,qty)=>{
+      name=String(name||'').replace(/^\s*(?:№\s*)?\d+[.)-]?\s+/,'').replace(/\s+/g,' ').trim();
+      cost=normalizeNum(cost); qty=Math.max(0,Math.round(normalizeNum(qty)||0));
+      if(!name||name.length<2||!Number.isFinite(cost)||cost<0||!qty)return;
+      if(/^(итого|всего|сумма|цена|кол-во|количество|наименование|страница|заказ|заказчик)$/i.test(name))return;
+      parsed.push({name,cost,qty});
+    };
+
+    // Common layouts:
+    // 1) № Name Price Qty Unit
+    // 2) Name Price Qty Unit
+    // 3) Name Qty Unit Price
+    // 4) Name Price Qty
+    // 5) Name ... then a following numeric row (PDF text extraction can split columns)
+    const patterns=[
+      /^(\d+)\s+(.+?)\s+(\d{1,9}(?:[.,]\d{1,2})?)\s+(\d{1,7})\s*(?:шт|штук|ед\.?|уп\.?|упаков\.?|pcs?)$/i,
+      /^(.+?)\s+(\d{1,9}(?:[.,]\d{1,2})?)\s+(\d{1,7})\s*(?:шт|штук|ед\.?|уп\.?|упаков\.?|pcs?)$/i,
+      /^(.+?)\s+(\d{1,7})\s*(?:шт|штук|ед\.?|уп\.?|упаков\.?|pcs?)\s+(\d{1,9}(?:[.,]\d{1,2})?)$/i,
+      /^(.+?)\s+(\d{1,9}(?:[.,]\d{1,2})?)\s+(\d{1,7})$/i
+    ];
+    let pending=[];
+    for(const raw of lines){
+      const line=raw.replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
+      if(!line)continue;
+      if(/^(?:итого|всего|сумма|итого к оплате|заказчик|поставщик|страница|стр\.|№\s*наименование|наименование\s+цена|цена\s+кол|кол-во|количество|единица|ед\.?\s*изм)/i.test(line))continue;
+      let m;
+      if((m=line.match(patterns[0]))){add(m[2],m[3],m[4]);pending=[];continue}
+      if((m=line.match(patterns[1]))){add(m[1],m[2],m[3]);pending=[];continue}
+      if((m=line.match(patterns[2]))){add(m[1],m[3],m[2]);pending=[];continue}
+      if((m=line.match(patterns[3]))){
+        const n1=normalizeNum(m[2]), n2=normalizeNum(m[3]);
+        // In a 3-column row, the smaller integer is usually quantity.
+        if(Number.isFinite(n1)&&Number.isFinite(n2)){
+          if(Number.isInteger(n2)&&n2<=100000)add(m[1],n1,n2);
+          else if(Number.isInteger(n1)&&n1<=100000)add(m[1],n2,n1);
+          else add(m[1],n1,n2);
+        }
+        pending=[];continue;
+      }
+      if(/^\d+\s*$/.test(line)&&pending.length===0){pending.push(line);continue}
+      if(/^(?:www\.|тел\.?|телефон|email|e-mail|инн|кпп|адрес|руб\.?|₽)/i.test(line))continue;
+      pending.push(line);
+    }
+
+    // Handle rows where the name was extracted on one line and "cost qty" on the next.
+    for(let i=0;i<lines.length-1;i++){
+      const a=lines[i].replace(/\s+/g,' ').trim(), b=lines[i+1].replace(/\s+/g,' ').trim();
+      const m=b.match(/^(\d{1,9}(?:[.,]\d{1,2})?)\s+(\d{1,7})\s*(?:шт|штук|ед\.?|уп\.?|упаков\.?|pcs?)?$/i);
+      if(m && a && !/^(?:итого|всего|цена|количество|наименование)/i.test(a))add(a,m[1],m[2]);
+    }
+
+    // Deduplicate, preserving the first occurrence; there is intentionally no row-count cap.
+    const seen=new Set();
+    pdfRows=[];
+    for(const r of parsed){
+      const key=r.name.toLowerCase().replace(/\s+/g,' ');
+      if(!seen.has(key)){seen.add(key);pdfRows.push(r)}
+    }
+    if(!pdfRows.length)throw new Error('Не удалось найти строки таблицы. PDF должен содержать текстовый слой; скан без текста требует OCR.');
+    status.textContent='Найдено товаров: '+pdfRows.length+'. Наценка: '+Number(document.getElementById('markup').value||30)+'%.';
+    prev.innerHTML=pdfRows.map((r,i)=>'<div class="item"><input id="pn'+i+'" value="'+esc(r.name)+'"><div class="small">Себестоимость: '+money(r.cost)+' · Остаток: '+r.qty+' · Продажа: '+money(Math.round(r.cost*(1+Number(document.getElementById('markup').value||30)/100)))+'</div></div>').join('');
+    btn.style.display='block';
+  }catch(e){console.error(e);status.textContent='Ошибка: '+(e.message||e);}
+}
+async function importPdfRows(){
+  const markup=Math.max(0,Number(document.getElementById('markup').value||30));
+  const rows=pdfRows.map((r,i)=>({name:(document.getElementById('pn'+i)?.value||r.name).trim(),cost:r.cost,stock:r.qty,price:Math.round(r.cost*(1+markup/100))})).filter(r=>r.name);
+  if(!rows.length)return alert('Нет товаров для импорта');
+  const status=document.getElementById('pdfStatus'); status.textContent='Импорт 0 / '+rows.length+'…';
+  let added=0,updated=0;
+  try{
+    // No product-count limit. Large PDFs are sent in chunks only to avoid one oversized HTTP request.
+    const chunkSize=100;
+    for(let i=0;i<rows.length;i+=chunkSize){
+      const chunk=rows.slice(i,i+chunkSize);
+      const r=await api('/api/admin/import-pdf?key='+encodeURIComponent(ADMIN_KEY),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});
+      if(!r.ok)throw new Error(r.error||'Ошибка импорта');
+      added+=Number(r.added||0); updated+=Number(r.updated||0);
+      status.textContent='Импорт '+Math.min(i+chunk.length,rows.length)+' / '+rows.length+'…';
+    }
+    status.textContent='Готово: добавлено '+added+', обновлено '+updated+'.';
+    loadAdmin();load();
+  }catch(e){console.error(e);status.textContent='Ошибка импорта: '+(e.message||e);}
+}
+
+load();
+</script></body></html>`;
+
+const schema=`CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,description TEXT DEFAULT '',price INTEGER NOT NULL,cost INTEGER NOT NULL DEFAULT 0,stock INTEGER NOT NULL DEFAULT 0,emoji TEXT DEFAULT '🛍️',active INTEGER NOT NULL DEFAULT 1,created_at TEXT DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY AUTOINCREMENT,tg_user_id TEXT,tg_username TEXT,total INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'Новый',created_at TEXT DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS order_items(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,product_id INTEGER,qty INTEGER,price INTEGER);`;
+async function ensure(env){
+  if(!env.DB)return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,description TEXT DEFAULT '',price INTEGER NOT NULL,cost INTEGER NOT NULL DEFAULT 0,stock INTEGER NOT NULL DEFAULT 0,emoji TEXT DEFAULT '🛍️',active INTEGER NOT NULL DEFAULT 1,created_at TEXT DEFAULT CURRENT_TIMESTAMP)").run();
+  try{await env.DB.prepare("ALTER TABLE products ADD COLUMN cost INTEGER NOT NULL DEFAULT 0").run()}catch(e){}
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY AUTOINCREMENT,tg_user_id TEXT,tg_username TEXT,total INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'Новый',created_at TEXT DEFAULT CURRENT_TIMESTAMP)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS order_items(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,product_id INTEGER,qty INTEGER,price INTEGER)").run();
+  const n=await env.DB.prepare('SELECT COUNT(*) c FROM products').first();
+  if(!n.c)await env.DB.prepare('INSERT INTO products(name,description,price,cost,stock,emoji) VALUES(?,?,?,?,?,?)').bind('Пример товара','Замените через админку',450,0,10,'🛍️').run();
+}
+async function json(x,s=200){return new Response(JSON.stringify(x),{status:s,headers:{'content-type':'application/json; charset=utf-8','access-control-allow-origin':'*'}})}
+export default {async fetch(request,env){
+  try{
+    const u=new URL(request.url);
+    if(request.method==='OPTIONS')return new Response('',{headers:{'access-control-allow-origin':'*','access-control-allow-methods':'GET,POST,PUT,DELETE,OPTIONS','access-control-allow-headers':'content-type'}});
+    if(!u.pathname.startsWith('/api/'))return new Response(HTML,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
+    if(env.DB)await ensure(env);if(u.pathname==='/api/products')return json(env.DB?await env.DB.prepare('SELECT * FROM products WHERE active=1 ORDER BY id DESC').all().then(x=>x.results):[]);if(u.pathname==='/api/orders'&&request.method==='GET'){const user=u.searchParams.get('user')||'guest';return json(env.DB?await env.DB.prepare('SELECT * FROM orders WHERE tg_user_id=? ORDER BY id DESC').bind(user).all().then(x=>x.results):[])}if(u.pathname==='/api/orders'&&request.method==='POST'){if(!env.DB)return json({error:'D1 не подключена'},500);const b=await request.json();let total=0;const items=[];for(const it of b.items||[]){const p=await env.DB.prepare('SELECT * FROM products WHERE id=? AND active=1').bind(it.product_id).first();if(!p||p.stock<it.qty)return json({error:'Недостаточно товара'},400);total+=p.price*it.qty;items.push({p,qty:it.qty})}const user=b.user||{};const r=await env.DB.prepare('INSERT INTO orders(tg_user_id,tg_username,total) VALUES(?,?,?)').bind(String(user.id||'guest'),user.username||'',total).run();for(const x of items){await env.DB.prepare('INSERT INTO order_items(order_id,product_id,qty,price) VALUES(?,?,?,?)').bind(r.meta.last_row_id,x.p.id,x.qty,x.p.price).run();await env.DB.prepare('UPDATE products SET stock=stock-? WHERE id=?').bind(x.qty,x.p.id).run()}return json({ok:true,id:r.meta.last_row_id})}if(u.pathname==='/api/admin/stats'){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);const rev=await env.DB.prepare("SELECT COALESCE(SUM(total),0) revenue,COUNT(*) orders,COUNT(DISTINCT tg_user_id) customers FROM orders").first();const profit=await env.DB.prepare("SELECT COALESCE(SUM(oi.qty*(oi.price-p.cost)),0) profit FROM order_items oi JOIN products p ON p.id=oi.product_id JOIN orders o ON o.id=oi.order_id WHERE o.status!='Отменён'").first();const pc=await env.DB.prepare('SELECT COUNT(*) products FROM products WHERE active=1').first();const iw=await env.DB.prepare("SELECT COUNT(*) in_work FROM orders WHERE status='В работе'").first();return json({...rev,...profit,...pc,...iw})}
+if(u.pathname==='/api/admin/products'&&request.method==='GET'){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);return json((await env.DB.prepare('SELECT * FROM products ORDER BY id DESC').all()).results)}
+if(u.pathname==='/api/admin/products'&&request.method==='POST'){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);const b=await request.json();if(!b.name||!Number.isFinite(+b.price))return json({error:'Заполни название и цену'},400);await env.DB.prepare('INSERT INTO products(name,description,price,cost,stock,emoji) VALUES(?,?,?,?,?,?)').bind(b.name,b.description||'',+b.price,+b.cost||0,+b.stock||0,b.emoji||'🛍️').run();return json({ok:true})}
+const pm=u.pathname.match(/^\/api\/admin\/products\/(\d+)$/);if(pm){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);const id=+pm[1];if(request.method==='GET'){const p=await env.DB.prepare('SELECT * FROM products WHERE id=?').bind(id).first();return json(p||{},p?200:404)}if(request.method==='PUT'){const b=await request.json();await env.DB.prepare('UPDATE products SET name=?,description=?,price=?,cost=?,stock=?,emoji=? WHERE id=?').bind(b.name,b.description||'',+b.price,+b.cost||0,+b.stock||0,b.emoji||'🛍️',id).run();return json({ok:true})}if(request.method==='DELETE'){await env.DB.prepare('UPDATE products SET active=0 WHERE id=?').bind(id).run();return json({ok:true})}}
+if(u.pathname==='/api/admin/orders'&&request.method==='GET'){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);const r=await env.DB.prepare("SELECT o.*, COALESCE(o.tg_username,o.tg_user_id,'Покупатель') customer FROM orders o ORDER BY o.id DESC").all();return json(r.results)}
+const om=u.pathname.match(/^\/api\/admin\/orders\/(\d+)$/);if(om&&request.method==='PUT'){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);const b=await request.json();const allowed=['Новый','В работе','Доставлен','Отменён'];if(!allowed.includes(b.status))return json({error:'Недопустимый статус'},400);await env.DB.prepare('UPDATE orders SET status=? WHERE id=?').bind(b.status,+om[1]).run();return json({ok:true})}
+if(u.pathname==='/api/admin/import-pdf'&&request.method==='POST'){if(u.searchParams.get('key')!==ADMIN_KEY)return json({error:'forbidden'},403);if(!env.DB)return json({error:'D1 не подключена'},500);const b=await request.json();const rows=Array.isArray(b.rows)?b.rows:[];let added=0,updated=0;for(const x of rows){const name=String(x.name||'').trim();const cost=Number(x.cost),stock=Math.max(0,Number(x.stock)||0),price=Math.max(0,Number(x.price)||0);if(!name||!Number.isFinite(cost)||!Number.isFinite(price))continue;const old=await env.DB.prepare('SELECT id FROM products WHERE lower(name)=lower(?) LIMIT 1').bind(name).first();if(old){await env.DB.prepare('UPDATE products SET cost=?,stock=?,price=?,active=1 WHERE id=?').bind(Math.round(cost),Math.round(stock),Math.round(price),old.id).run();updated++}else{await env.DB.prepare('INSERT INTO products(name,description,price,cost,stock,emoji) VALUES(?,?,?,?,?,?)').bind(name,'',Math.round(price),Math.round(cost),Math.round(stock),'🛍️').run();added++}}return json({ok:true,added,updated})}
+if(u.pathname==='/api/schema')return new Response(schema,{headers:{'content-type':'text/plain'}});return new Response('Not found',{status:404,headers:{'content-type':'text/plain; charset=utf-8'}});
+  }catch(e){console.error(e);return json({error:e?.message||'Ошибка Worker'},500)}
+}};
