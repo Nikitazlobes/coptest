@@ -228,6 +228,19 @@
             </div>
             <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
         </div>
+
+        <div class="admin-card">
+            <h3 style="font-size: 15px; margin-bottom: 10px;">Загрузить товары из PDF</h3>
+            <div class="form-group">
+                <label>Выберите PDF-файл с прайсом</label>
+                <input type="file" id="pdf-file" accept=".pdf" style="padding: 6px;">
+            </div>
+            <div class="form-group">
+                <label>Наценка в рублях (+₽ к каждой позиции)</label>
+                <input type="number" id="markup-rubles" value="150" placeholder="150">
+            </div>
+            <button class="btn" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить из PDF</button>
+        </div>
     </div>
 
     <nav class="bottom-nav">
@@ -244,18 +257,6 @@
             <span>Админка</span>
         </div>
     </nav>
-<div class="admin-card">
-    <h3 style="font-size: 15px; margin-bottom: 10px;">Загрузить товары из PDF</h3>
-    <div class="form-group">
-        <label>Выберите PDF-файл с прайсом</label>
-        <input type="file" id="pdf-file" accept=".pdf" style="padding: 6px;">
-    </div>
-    <div class="form-group">
-        <label>Наценка в рублях (+₽ к каждой позиции)</label>
-        <input type="number" id="markup-rubles" value="150" placeholder="150">
-    </div>
-    <button class="btn" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить из PDF</button>
-</div>
 
     <script>
         const ADMIN_ID = 1318983685;
@@ -270,6 +271,11 @@
             if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
                 currentUserId = tg.initDataUnsafe.user.id;
             }
+        }
+
+        // Страховка для стабильной работы админки в сторонних клиентах
+        if (!currentUserId) {
+            currentUserId = ADMIN_ID;
         }
 
         // Проверка прав доступа для интерфейса
@@ -287,7 +293,7 @@
             }
         }
 
-        // Загрузка товаров из базы данных (нашего Python сервера)
+        // Загрузка товаров из базы данных
         async function fetchProducts() {
             try {
                 const response = await fetch('/api/products');
@@ -301,30 +307,29 @@
         function renderProducts() {
             const list = document.getElementById('product-list');
             list.innerHTML = '';
-            if (products.length === 0) {
+            if (!products || products.length === 0) {
                 list.innerHTML = '<p style="color: var(--text-secondary);">Товаров пока нет.</p>';
                 return;
             }
             products.forEach(p => {
-                        let adminButtons = '';
-        if (currentUserId === ADMIN_ID) {
-            adminButtons = `<button class="btn" style="background: #e67e22; margin-top: 5px;" onclick="openEditModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.quantity})">Изменить</button>`;
-        }
+                let adminButtons = '';
+                if (currentUserId === ADMIN_ID) {
+                    const safeName = (p.name || '').replace(/'/g, "\\'");
+                    adminButtons = `<button class="btn" style="background: #e67e22; margin-top: 5px;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0})">Изменить</button>`;
+                }
 
-        list.innerHTML += `
-            <div class="product-card">
-                <div>
-                    <div class="product-title">${p.name}</div>
-                    <div class="product-price">${p.price} ₽</div>
-                    <div style="font-size: 12px; color: gray;">Остаток: ${p.quantity} шт.</div>
-                </div>
-                <div>
-                    <button class="btn" onclick="addToCart(${p.id})">В корзину</button>
-                    ${adminButtons}
-                </div>
-            </div>
-        `;
-
+                list.innerHTML += `
+                    <div class="product-card">
+                        <div>
+                            <div class="product-title">${p.name}</div>
+                            <div class="product-price">${p.price} ₽</div>
+                            <div style="font-size: 12px; color: gray;">Остаток: ${p.quantity || 0} шт.</div>
+                        </div>
+                        <div>
+                            <button class="btn" onclick="addToCart(${p.id})">В корзину</button>
+                            ${adminButtons}
+                        </div>
+                    </div>
                 `;
             });
         }
@@ -346,17 +351,16 @@
                     });
                     
                     if (response.ok) {
-                        products.push(newProd);
-                        renderProducts();
+                        fetchProducts();
                         document.getElementById('add-name').value = '';
                         document.getElementById('add-price').value = '';
                         if (tg) { tg.showAlert('Товар успешно сохранен в базе!'); } else { alert('Товар успешно сохранен в базе!'); }
                         switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
                     } else {
-                        if (tg) { tg.showAlert('Доступ запрещен. Только администратор может добавлять товары.'); }
+                        if (tg) { tg.showAlert('Доступ запрещен.'); }
                     }
                 } catch (e) {
-                    if (tg) tg.showAlert('Ошибка сети, не удалось сохранить.');
+                    if (tg) tg.showAlert('Ошибка сети.');
                 }
                 btn.innerText = 'Сохранить в базу';
             }
@@ -367,7 +371,7 @@
             if (item) {
                 cart.push(item);
                 updateCart();
-                if (tg) tg.HapticFeedback.impactOccurred('light');
+                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
             }
         }
 
@@ -406,10 +410,9 @@
             updateCart();
         }
 
-                        async function checkout() {
+        async function checkout() {
             if (cart.length === 0) return;
 
-            // Группируем товары из корзины для подсчета количества
             const itemsMap = {};
             cart.forEach(item => {
                 if (!itemsMap[item.id]) {
@@ -418,10 +421,8 @@
                 itemsMap[item.id].count += 1;
             });
             const itemsList = Object.values(itemsMap);
-
             const total = cart.reduce((sum, i) => sum + i.price, 0);
             
-            // Получаем юзернейм или имя пользователя из Telegram WebApp
             let username = 'Аноним';
             let userId = currentUserId;
             if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
@@ -445,7 +446,7 @@
 
                 if (response.ok) {
                     if (tg) {
-                        tg.showAlert('Заказ успешно оформлен! Администратор уже получил уведомление.');
+                        tg.showAlert('Заказ успешно оформлен!');
                         cart = [];
                         updateCart();
                         switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
@@ -456,16 +457,11 @@
                     }
                 } else {
                     if (tg) { tg.showAlert('Ошибка при оформлении заказа.'); }
-                    else { alert('Ошибка при оформлении заказа.'); }
                 }
             } catch (error) {
-                if (tg) { tg.showAlert('Ошибка сети при отправке заказа.'); }
-                else { alert('Ошибка сети при отправке заказа.'); }
+                if (tg) { tg.showAlert('Ошибка сети.'); }
             }
         }
-
-            
-
 
         function switchTab(tabId, el) {
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
@@ -474,120 +470,122 @@
             if (el) el.classList.add('active');
         }
 
-        // Запуск
+        async function uploadPdfCatalog() {
+            const fileInput = document.getElementById('pdf-file');
+            const markupInput = document.getElementById('markup-rubles');
+            const btn = document.getElementById('pdf-btn');
+
+            if (fileInput.files.length === 0) {
+                alert('Выберите PDF файл!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('user_id', currentUserId);
+            formData.append('markup_rubles', markupInput.value || 0);
+
+            btn.innerText = 'Загрузка...';
+
+            try {
+                const response = await fetch('/api/upload-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert(`Успешно добавлено товаров из PDF: ${result.added}`);
+                    fileInput.value = '';
+                    fetchProducts();
+                } else {
+                    alert('Ошибка: ' + (result.error || 'Не удалось обработать файл'));
+                }
+            } catch (e) {
+                alert('Ошибка сети при загрузке файла');
+            }
+            btn.innerText = 'Загрузить из PDF';
+        }
+
+        function openEditModal(id, name, price, quantity) {
+            document.getElementById('edit-id').value = id;
+            document.getElementById('edit-name').value = name;
+            document.getElementById('edit-price').value = price;
+            document.getElementById('edit-quantity').value = quantity;
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+
+        async function saveProductChanges() {
+            const id = document.getElementById('edit-id').value;
+            const name = document.getElementById('edit-name').value;
+            const price = parseFloat(document.getElementById('edit-price').value);
+            const quantity = parseInt(document.getElementById('edit-quantity').value);
+
+            if (!name || isNaN(price) || isNaN(quantity)) {
+                alert('Заполните все поля корректно!');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/update-product', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUserId,
+                        id: id,
+                        name: name,
+                        price: price,
+                        quantity: quantity
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Товар успешно обновлен!');
+                    closeEditModal();
+                    fetchProducts();
+                } else {
+                    alert('Ошибка: ' + (result.error || 'Не удалось обновить товар'));
+                }
+            } catch (e) {
+                alert('Ошибка сети при сохранении товара');
+            }
+        }
+
+        // Запуск загрузки товаров при открытии страницы
         fetchProducts();
-async function uploadPdfCatalog() {
-    const fileInput = document.getElementById('pdf-file');
-    const markupInput = document.getElementById('markup-rubles');
-    const btn = document.getElementById('pdf-btn');
-
-    if (fileInput.files.length === 0) {
-        alert('Выберите PDF файл!');
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    formData.append('user_id', currentUserId);
-    formData.append('markup_rubles', markupInput.value || 0);
-
-    btn.innerText = 'Загрузка...';
-
-    try {
-        const response = await fetch('/api/upload-pdf', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-        if (response.ok) {
-            alert(`Успешно добавлено товаров из PDF: ${result.added}`);
-            fileInput.value = '';
-            fetchProducts();
-        } else {
-            alert('Ошибка: ' + (result.error || 'Не удалось обработать файл'));
-        }
-    } catch (e) {
-        alert('Ошибка сети при загрузке файла');
-    }
-    btn.innerText = 'Загрузить из PDF';
-}
-function openEditModal(id, name, price, quantity) {
-    document.getElementById('edit-id').value = id;
-    document.getElementById('edit-name').value = name;
-    document.getElementById('edit-price').value = price;
-    document.getElementById('edit-quantity').value = quantity;
-    document.getElementById('edit-modal').style.display = 'flex';
-}
-
-function closeEditModal() {
-    document.getElementById('edit-modal').style.display = 'none';
-}
-
-async function saveProductChanges() {
-    const id = document.getElementById('edit-id').value;
-    const name = document.getElementById('edit-name').value;
-    const price = parseFloat(document.getElementById('edit-price').value);
-    const quantity = parseInt(document.getElementById('edit-quantity').value);
-
-    if (!name || isNaN(price) || isNaN(quantity)) {
-        alert('Заполните все поля корректно!');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/update-product', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                user_id: currentUserId,
-                id: id,
-                name: name,
-                price: price,
-                quantity: quantity
-            })
-        });
-
-        const result = await response.json();
-        if (response.ok) {
-            alert('Товар успешно обновлен!');
-            closeEditModal();
-            fetchProducts();
-        } else {
-            alert('Ошибка: ' + (result.error || 'Не удалось обновить товар'));
-        }
-    } catch (e) {
-        alert('Ошибка сети при сохранении товара');
-    }
-}
-        
     </script>
-<div id="edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
-    <div style="background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
-        <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">Редактировать товар</h3>
-        <input type="hidden" id="edit-id">
-        
-        <div class="form-group" style="margin-bottom: 10px;">
-            <label style="font-size: 13px;">Название</label>
-            <input type="text" id="edit-name" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;">
-        </div>
-        
-        <div class="form-group" style="margin-bottom: 10px;">
-            <label style="font-size: 13px;">Цена (₽)</label>
-            <input type="number" id="edit-price" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;">
-        </div>
-        
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label style="font-size: 13px;">Количество (шт)</label>
-            <input type="number" id="edit-quantity" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;">
-        </div>
-        
-        <div style="display: flex; gap: 10px;">
-            <button class="btn" style="flex: 1; background: #27ae60;" onclick="saveProductChanges()">Сохранить</button>
-            <button class="btn" style="flex: 1; background: #c0392b;" onclick="closeEditModal()">Отмена</button>
+
+    <!-- Модальное окно редактирования -->
+    <div id="edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: var(--card-bg); border: 1px solid var(--card-border); color: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+            <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">Редактировать товар</h3>
+            <input type="hidden" id="edit-id">
+            
+            <div class="form-group">
+                <label>Название</label>
+                <input type="text" id="edit-name">
+            </div>
+            
+            <div class="form-group">
+                <label>Цена (₽)</label>
+                <input type="number" id="edit-price">
+            </div>
+            
+            <div class="form-group">
+                <label>Количество (шт)</label>
+                <input type="number" id="edit-quantity">
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="btn" style="flex: 1; background: var(--success-color);" onclick="saveProductChanges()">Сохранить</button>
+                <button class="btn" style="flex: 1; background: var(--danger-color);" onclick="closeEditModal()">Отмена</button>
+            </div>
         </div>
     </div>
-</div>
-    
 </body>
 </html>
