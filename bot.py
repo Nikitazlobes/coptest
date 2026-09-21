@@ -317,6 +317,25 @@ def update_product():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@flask_app.route('/api/delete-product', methods=['POST'])
+def delete_product():
+    data = request.json
+    user_id = data.get('user_id')
+    product_id = data.get('id')
+
+    if user_id != ADMIN_ID:
+        return jsonify({'error': 'Доступ запрещен'}), 403
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM products WHERE id = ?', (product_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
