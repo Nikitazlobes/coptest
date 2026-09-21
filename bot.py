@@ -10,7 +10,7 @@ import re
 from pypdf import PdfReader
 
 # Настройки
-TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEnvtZL04SkDtGcAzcY28qqMK7KbWZspYI')  # Лучше вынести в переменные окружения Render или вписать сюда
+TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAErKWlTfpV5EQPPSPCeZbAPopcfsJd5d-o')  # Лучше вынести в переменные окружения Render или вписать сюда
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 1318983685))  # Замените на ваш Telegram ID (число)
 DB_NAME = 'c-opt-store.db'
 
