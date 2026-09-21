@@ -271,7 +271,8 @@ def upload_pdf():
                     
                     if price_data and name_parts:
                         full_name = " ".join(name_parts)
-                        full_name = re.sub(r'^\d+\s+', '', full_name).strip()
+                        full_name = re.sub(r'^\d+[\.\)]\s*', '', full_name).strip()
+
                         price, quantity = price_data
                         if full_name:
                             cur.execute(
