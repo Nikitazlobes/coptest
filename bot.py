@@ -75,9 +75,11 @@ init_db()
 flask_app = Flask(__name__)
 CORS(flask_app)
 
+import os
+
 @flask_app.route('/')
 def index():
-    return send_file('index.html')
+    return send_file(os.path.join(os.path.dirname(__file__), 'index.html'))
 
 @flask_app.route('/api/products', methods=['GET'])
 def get_products():
