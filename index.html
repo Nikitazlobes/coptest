@@ -306,14 +306,25 @@
                 return;
             }
             products.forEach(p => {
-                list.innerHTML += `
-                    <div class="product-card">
-                        <div>
-                            <div class="product-title">${p.name}</div>
-                            <div class="product-price">${p.price} ₽</div>
-                        </div>
-                        <button class="btn" onclick="addToCart(${p.id})">+ В корзину</button>
-                    </div>
+                        let adminButtons = '';
+        if (currentUserId === ADMIN_ID) {
+            adminButtons = `<button class="btn" style="background: #e67e22; margin-top: 5px;" onclick="openEditModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.quantity})">Изменить</button>`;
+        }
+
+        list.innerHTML += `
+            <div class="product-card">
+                <div>
+                    <div class="product-title">${p.name}</div>
+                    <div class="product-price">${p.price} ₽</div>
+                    <div style="font-size: 12px; color: gray;">Остаток: ${p.quantity} шт.</div>
+                </div>
+                <div>
+                    <button class="btn" onclick="addToCart(${p.id})">В корзину</button>
+                    ${adminButtons}
+                </div>
+            </div>
+        `;
+
                 `;
             });
         }
@@ -501,7 +512,82 @@ async function uploadPdfCatalog() {
     }
     btn.innerText = 'Загрузить из PDF';
 }
+function openEditModal(id, name, price, quantity) {
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-name').value = name;
+    document.getElementById('edit-price').value = price;
+    document.getElementById('edit-quantity').value = quantity;
+    document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+}
+
+async function saveProductChanges() {
+    const id = document.getElementById('edit-id').value;
+    const name = document.getElementById('edit-name').value;
+    const price = parseFloat(document.getElementById('edit-price').value);
+    const quantity = parseInt(document.getElementById('edit-quantity').value);
+
+    if (!name || isNaN(price) || isNaN(quantity)) {
+        alert('Заполните все поля корректно!');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/update-product', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: currentUserId,
+                id: id,
+                name: name,
+                price: price,
+                quantity: quantity
+            })
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            alert('Товар успешно обновлен!');
+            closeEditModal();
+            fetchProducts();
+        } else {
+            alert('Ошибка: ' + (result.error || 'Не удалось обновить товар'));
+        }
+    } catch (e) {
+        alert('Ошибка сети при сохранении товара');
+    }
+}
         
     </script>
+<div id="edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+        <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">Редактировать товар</h3>
+        <input type="hidden" id="edit-id">
+        
+        <div class="form-group" style="margin-bottom: 10px;">
+            <label style="font-size: 13px;">Название</label>
+            <input type="text" id="edit-name" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;">
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 10px;">
+            <label style="font-size: 13px;">Цена (₽)</label>
+            <input type="number" id="edit-price" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;">
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="font-size: 13px;">Количество (шт)</label>
+            <input type="number" id="edit-quantity" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;">
+        </div>
+        
+        <div style="display: flex; gap: 10px;">
+            <button class="btn" style="flex: 1; background: #27ae60;" onclick="saveProductChanges()">Сохранить</button>
+            <button class="btn" style="flex: 1; background: #c0392b;" onclick="closeEditModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+    
 </body>
 </html>
