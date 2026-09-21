@@ -383,20 +383,66 @@
             updateCart();
         }
 
-        function checkout() {
+                        async function checkout() {
             if (cart.length === 0) return;
-            const itemsSummary = cart.map(i => i.name).join(', ');
+
+            // Группируем товары из корзины для подсчета количества
+            const itemsMap = {};
+            cart.forEach(item => {
+                if (!itemsMap[item.id]) {
+                    itemsMap[item.id] = { id: item.id, name: item.name, price: item.price, count: 0 };
+                }
+                itemsMap[item.id].count += 1;
+            });
+            const itemsList = Object.values(itemsMap);
+
             const total = cart.reduce((sum, i) => sum + i.price, 0);
             
-            const orderData = { items: itemsSummary, total: total };
+            // Получаем юзернейм или имя пользователя из Telegram WebApp
+            let username = 'Аноним';
+            let userId = currentUserId;
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                username = tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name || 'Аноним';
+                userId = tg.initDataUnsafe.user.id;
+            }
 
-            if (tg) {
-                tg.sendData(JSON.stringify(orderData));
-                tg.close();
-            } else {
-                alert('Заказ оформлен! Сумма: ' + total + ' ₽');
+            const orderData = {
+                user_id: userId,
+                username: username,
+                items: itemsList,
+                total: total
+            };
+
+            try {
+                const response = await fetch('/api/order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+
+                if (response.ok) {
+                    if (tg) {
+                        tg.showAlert('Заказ успешно оформлен! Администратор уже получил уведомление.');
+                        cart = [];
+                        updateCart();
+                        switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
+                    } else {
+                        alert('Заказ успешно оформлен!');
+                        cart = [];
+                        updateCart();
+                    }
+                } else {
+                    if (tg) { tg.showAlert('Ошибка при оформлении заказа.'); }
+                    else { alert('Ошибка при оформлении заказа.'); }
+                }
+            } catch (error) {
+                if (tg) { tg.showAlert('Ошибка сети при отправке заказа.'); }
+                else { alert('Ошибка сети при отправке заказа.'); }
             }
         }
+
+            
+
 
         function switchTab(tabId, el) {
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
