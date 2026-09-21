@@ -11,7 +11,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 # НАСТРОЙКИ
 TOKEN = "8855611435:AAEnvtZL04SkDtGcAzcY28qqMK7KbWZspYI"
-WEB_APP_URL = "https://c-opt-est-app.onrender.com"
+WEB_APP_URL = "https://coptest.onrender.com"
 ADMIN_ID = 1318983685
 
 logging.basicConfig(level=logging.INFO)
