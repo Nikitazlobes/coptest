@@ -8,7 +8,7 @@ from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMar
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # НАСТРОЙКИ (Вставьте URL после публикации на Render)
-TOKEN = "8382096900:AAFKyUecNXkgURwfXN7rzSYtle"
+TOKEN = "8535899033:AAGyIlaImgOZmWYUOxNBfbHVBLJm_MuC1ek"
 WEB_APP_URL = "https://c-opt-est-app.onrender.com" # ЗАМЕНИТЕ НА ВАШ ССЫЛКУ RENDER
 ADMIN_ID = 1318983685
 
