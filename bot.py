@@ -10,7 +10,7 @@ from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMar
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # НАСТРОЙКИ
-TOKEN = "8535899033:AAGyIlaImgOZmWYUOxNBfbHVBLJm_MuC1ek"
+TOKEN = "8855611435:AAEnvtZL04SkDtGcAzcY28qqMK7KbWZspYI"
 WEB_APP_URL = "https://c-opt-est-app.onrender.com"
 ADMIN_ID = 1318983685
 
