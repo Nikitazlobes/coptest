@@ -4,6 +4,9 @@ import telebot
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from threading import Thread
+import io
+import re
+from pypdf import PdfReader
 
 # Настройки
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEnvtZL04SkDtGcAzcY28qqMK7KbWZspYI')  # Лучше вынести в переменные окружения Render или вписать сюда
@@ -183,6 +186,108 @@ def get_stats():
         "total_orders": total_orders,
         "total_revenue": total_revenue
     })
+@flask_app.route('/api/upload-pdf', methods=['POST'])
+def upload_pdf():
+    user_id = request.form.get('user_id', type=int)
+    if user_id != ADMIN_ID:
+        return jsonify({"error": "Доступ запрещен"}), 403
+
+    if 'file' not in request.files:
+        return jsonify({"error": "Файл не найден"}), 400
+
+    file = request.files['file']
+    markup_rubles = float(request.form.get('markup_rubles', 0))
+
+    if file.filename == '':
+        return jsonify({"error": "Файл не выбран"}), 400
+
+    try:
+        pdf_reader = PdfReader(io.BytesIO(file.read()))
+        extracted_text = ""
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n"
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        added_count = 0
+        lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            match_end = re.search(r'([\d\s,]+)\s+(\d+)\s*шт\s+([\d\s,]+)$', line)
+            
+            if match_end:
+                price_str = match_end.group(1).replace(' ', '').replace(',', '.')
+                qty_str = match_end.group(2)
+                name = line[:match_end.start()].strip()
+                name = re.sub(r'^\d+\s+', '', name)
+                
+                try:
+                    raw_price = float(price_str)
+                    final_price = int(raw_price + markup_rubles)
+                    quantity = int(qty_str)
+                    
+                    if name:
+                        cur.execute(
+                            "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
+                            (name, final_price, quantity)
+                        )
+                        added_count += 1
+                except ValueError:
+                    pass
+                i += 1
+            else:
+                if re.match(r'^\d+$', line) and i + 1 < len(lines):
+                    name_parts = []
+                    i += 1
+                    price_data = None
+                    
+                    while i < len(lines):
+                        subline = lines[i]
+                        price_match = re.search(r'^([\d\s,]+)\s+(\d+)\s*шт\s+([\d\s,]+)$', subline)
+                        if price_match:
+                            price_str = price_match.group(1).replace(' ', '').replace(',', '.')
+                            qty_str = price_match.group(2)
+                            leftover = subline[:price_match.start()].strip()
+                            if leftover:
+                                name_parts.append(leftover)
+                            
+                            try:
+                                raw_price = float(price_str)
+                                final_price = int(raw_price + markup_rubles)
+                                price_data = (final_price, int(qty_str))
+                            except ValueError:
+                                pass
+                            i += 1
+                            break
+                        else:
+                            name_parts.append(subline)
+                            i += 1
+                    
+                    if price_data and name_parts:
+                        full_name = " ".join(name_parts)
+                        full_name = re.sub(r'^\d+\s+', '', full_name).strip()
+                        price, quantity = price_data
+                        if full_name:
+                            cur.execute(
+                                "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
+                                (full_name, price, quantity)
+                            )
+                            added_count += 1
+                else:
+                    i += 1
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({"status": "success", "added": added_count})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
