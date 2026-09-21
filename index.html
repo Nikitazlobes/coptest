@@ -244,6 +244,18 @@
             <span>Админка</span>
         </div>
     </nav>
+<div class="admin-card">
+    <h3 style="font-size: 15px; margin-bottom: 10px;">Загрузить товары из PDF</h3>
+    <div class="form-group">
+        <label>Выберите PDF-файл с прайсом</label>
+        <input type="file" id="pdf-file" accept=".pdf" style="padding: 6px;">
+    </div>
+    <div class="form-group">
+        <label>Наценка в рублях (+₽ к каждой позиции)</label>
+        <input type="number" id="markup-rubles" value="150" placeholder="150">
+    </div>
+    <button class="btn" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить из PDF</button>
+</div>
 
     <script>
         const ADMIN_ID = 1318983685;
@@ -453,6 +465,43 @@
 
         // Запуск
         fetchProducts();
+async function uploadPdfCatalog() {
+    const fileInput = document.getElementById('pdf-file');
+    const markupInput = document.getElementById('markup-rubles');
+    const btn = document.getElementById('pdf-btn');
+
+    if (fileInput.files.length === 0) {
+        alert('Выберите PDF файл!');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('user_id', currentUserId);
+    formData.append('markup_rubles', markupInput.value || 0);
+
+    btn.innerText = 'Загрузка...';
+
+    try {
+        const response = await fetch('/api/upload-pdf', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            alert(`Успешно добавлено товаров из PDF: ${result.added}`);
+            fileInput.value = '';
+            fetchProducts();
+        } else {
+            alert('Ошибка: ' + (result.error || 'Не удалось обработать файл'));
+        }
+    } catch (e) {
+        alert('Ошибка сети при загрузке файла');
+    }
+    btn.innerText = 'Загрузить из PDF';
+}
+        
     </script>
 </body>
 </html>
