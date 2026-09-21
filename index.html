@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>C-opt EST Store</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #151c2c;
+            --card-border: #232d42;
+            --accent-color: #6366f1;
+            --accent-hover: #4f46e5;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            padding-bottom: 80px;
+        }
+
+        header {
+            padding: 16px;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, rgba(11, 15, 25, 0) 100%);
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 16px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+        }
+
+        .product-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .product-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+
+        .product-price {
+            font-size: 16px;
+            font-weight: 700;
+            color: #a5b4fc;
+            margin-bottom: 10px;
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+
+        .btn:active {
+            background-color: var(--accent-hover);
+        }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 65px;
+            background-color: #0f172a;
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--text-secondary);
+            font-size: 11px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .nav-item.active {
+            color: var(--accent-color);
+        }
+
+        .nav-icon {
+            font-size: 20px;
+            margin-bottom: 2px;
+        }
+
+        .cart-item {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .form-group input {
+            width: 100%;
+            background: #0b0f19;
+            border: 1px solid var(--card-border);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .badge {
+            background: rgba(99, 102, 241, 0.2);
+            color: #818cf8;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand-title">C-opt EST Shop</div>
+        <span class="badge" id="user-role">Клиент</span>
+    </header>
+
+    <div id="tab-catalog" class="tab-content active">
+        <h2 style="font-size: 18px; margin-bottom: 14px;">Каталог товаров</h2>
+        <div class="product-grid" id="product-list">
+            <p style="color: var(--text-secondary);">Загрузка товаров...</p>
+        </div>
+    </div>
+
+    <div id="tab-cart" class="tab-content">
+        <h2 style="font-size: 18px; margin-bottom: 14px;">Ваша корзина</h2>
+        <div id="cart-list">
+            <p style="color: var(--text-secondary);">Корзина пуста</p>
+        </div>
+        <div id="cart-summary" style="margin-top: 20px; display: none;">
+            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; margin-bottom: 14px;">
+                <span>Итого:</span>
+                <span id="cart-total">0 ₽</span>
+            </div>
+            <button class="btn" style="padding: 14px; font-size: 16px;" onclick="checkout()">Оформить заказ</button>
+        </div>
+    </div>
+
+    <div id="tab-admin" class="tab-content">
+        <h2 style="font-size: 18px; margin-bottom: 14px;">Панель управления</h2>
+        <div class="admin-card">
+            <h3 style="font-size: 15px; margin-bottom: 10px;">Добавить товар в базу</h3>
+            <div class="form-group">
+                <label>Название товара</label>
+                <input type="text" id="add-name" placeholder="Пример: Электронная сигарета V8">
+            </div>
+            <div class="form-group">
+                <label>Цена (руб)</label>
+                <input type="number" id="add-price" placeholder="1500">
+            </div>
+            <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
+        </div>
+    </div>
+
+    <nav class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('catalog', this)">
+            <span class="nav-icon">🛍️</span>
+            <span>Каталог</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('cart', this)">
+            <span class="nav-icon">🛒</span>
+            <span>Корзина (<span id="cart-count">0</span>)</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('admin', this)">
+            <span class="nav-icon">⚙️</span>
+            <span>Админка</span>
+        </div>
+    </nav>
+
+    <script>
+        const ADMIN_ID = 1318983685;
+        let currentUserId = null;
+        let products = [];
+        let cart = [];
+
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.expand();
+            tg.ready();
+            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                currentUserId = tg.initDataUnsafe.user.id;
+            }
+        }
+
+        // Проверка прав доступа для интерфейса
+        if (currentUserId !== ADMIN_ID) {
+            const adminNavButton = document.querySelectorAll('.nav-item')[2];
+            if (adminNavButton) adminNavButton.style.display = 'none';
+            const adminTab = document.getElementById('tab-admin');
+            if (adminTab) adminTab.remove();
+        } else {
+            const roleBadge = document.getElementById('user-role');
+            if(roleBadge) {
+                roleBadge.innerText = 'Администратор';
+                roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+                roleBadge.style.color = '#10b981';
+            }
+        }
+
+        // Загрузка товаров из базы данных (нашего Python сервера)
+        async function fetchProducts() {
+            try {
+                const response = await fetch('/api/products');
+                products = await response.json();
+                renderProducts();
+            } catch (error) {
+                document.getElementById('product-list').innerHTML = '<p style="color: red;">Ошибка связи с сервером базы данных.</p>';
+            }
+        }
+
+        function renderProducts() {
+            const list = document.getElementById('product-list');
+            list.innerHTML = '';
+            if (products.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-secondary);">Товаров пока нет.</p>';
+                return;
+            }
+            products.forEach(p => {
+                list.innerHTML += `
+                    <div class="product-card">
+                        <div>
+                            <div class="product-title">${p.name}</div>
+                            <div class="product-price">${p.price} ₽</div>
+                        </div>
+                        <button class="btn" onclick="addToCart(${p.id})">+ В корзину</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function addNewProduct() {
+            const name = document.getElementById('add-name').value;
+            const price = parseFloat(document.getElementById('add-price').value);
+            const btn = document.getElementById('add-btn');
+            
+            if (name && price) {
+                btn.innerText = 'Сохранение...';
+                const newProd = { id: Date.now(), name: name, price: price, user_id: currentUserId };
+                
+                try {
+                    const response = await fetch('/api/products', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newProd)
+                    });
+                    
+                    if (response.ok) {
+                        products.push(newProd);
+                        renderProducts();
+                        document.getElementById('add-name').value = '';
+                        document.getElementById('add-price').value = '';
+                        if (tg) { tg.showAlert('Товар успешно сохранен в базе!'); } else { alert('Товар успешно сохранен в базе!'); }
+                        switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
+                    } else {
+                        if (tg) { tg.showAlert('Доступ запрещен. Только администратор может добавлять товары.'); }
+                    }
+                } catch (e) {
+                    if (tg) tg.showAlert('Ошибка сети, не удалось сохранить.');
+                }
+                btn.innerText = 'Сохранить в базу';
+            }
+        }
+
+        function addToCart(id) {
+            const item = products.find(p => p.id === id);
+            if (item) {
+                cart.push(item);
+                updateCart();
+                if (tg) tg.HapticFeedback.impactOccurred('light');
+            }
+        }
+
+        function updateCart() {
+            document.getElementById('cart-count').innerText = cart.length;
+            const list = document.getElementById('cart-list');
+            const summary = document.getElementById('cart-summary');
+            
+            if (cart.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-secondary);">Корзина пуста</p>';
+                summary.style.display = 'none';
+                return;
+            }
+
+            list.innerHTML = '';
+            let total = 0;
+            cart.forEach((item, index) => {
+                total += item.price;
+                list.innerHTML += `
+                    <div class="cart-item">
+                        <div>
+                            <div style="font-weight: 600;">${item.name}</div>
+                            <div style="color: #a5b4fc; font-size: 14px;">${item.price} ₽</div>
+                        </div>
+                        <button style="background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 18px;" onclick="removeFromCart(${index})">✕</button>
+                    </div>
+                `;
+            });
+
+            document.getElementById('cart-total').innerText = total + ' ₽';
+            summary.style.display = 'block';
+        }
+
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            updateCart();
+        }
+
+        function checkout() {
+            if (cart.length === 0) return;
+            const itemsSummary = cart.map(i => i.name).join(', ');
+            const total = cart.reduce((sum, i) => sum + i.price, 0);
+            
+            const orderData = { items: itemsSummary, total: total };
+
+            if (tg) {
+                tg.sendData(JSON.stringify(orderData));
+                tg.close();
+            } else {
+                alert('Заказ оформлен! Сумма: ' + total + ' ₽');
+            }
+        }
+
+        function switchTab(tabId, el) {
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(ni => ni.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            if (el) el.classList.add('active');
+        }
+
+        // Запуск
+        fetchProducts();
+    </script>
+</body>
+</html>
