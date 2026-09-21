@@ -6,8 +6,8 @@ from flask_cors import CORS
 from threading import Thread
 
 # Токен вашего бота и настройки
-TOKEN = 'ВАШ_ТОКЕН_БОТА'  # Замените на токен вашего бота от BotFather
-ADMIN_ID = 123456789     # Замените на ваш Telegram ID
+TOKEN = '8855611435:AAEnvtZL04SkDtGcAzcY28qqMK7KbWZspYI'  # Замените на токен вашего бота от BotFather
+ADMIN_ID = 1318983685     # Замените на ваш Telegram ID
 DB_NAME = 'c-opt-store.db'
 
 bot = telebot.TeleBot(TOKEN)
@@ -109,3 +109,4 @@ if __name__ == '__main__':
     
     # Запуск бота в режиме бесконечного опроса
     bot.infinity_polling()
+
