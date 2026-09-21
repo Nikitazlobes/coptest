@@ -196,13 +196,16 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
 
 if __name__ == '__main__':
-    threading.Thread(target=run_flask, daemon=True).start()
+    # 1. Запускаем Flask-сервер в фоновом потоке
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
     
+    # 2. Запускаем Telegram бота с защитой от конфликтов getUpdates
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     
     print("🚀 Сервер и Бот успешно запущены с поддержкой PostgreSQL и статистики!")
-    app.run_polling()
-
-
+    
+    # drop_pending_updates=True автоматически сбрасывает все старые зависшие запросы в Telegram
+    app.run_polling(drop_pending_updates=True)
