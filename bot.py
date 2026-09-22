@@ -82,7 +82,7 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
 
@@ -92,8 +92,11 @@ def handle_order_action(call):
         bot.answer_callback_query(call.id, "Доступ запрещен", show_alert=True)
         return
 
-    # Сразу убираем крутилку с кнопки
-    bot.answer_callback_query(call.id)
+    # В САМОМ НАЧАЛЕ ВСЕГДА гасим анимацию загрузки на кнопке
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
 
     try:
         parts = call.data.split('_')
@@ -113,6 +116,7 @@ def handle_order_action(call):
     if not order:
         cur.close()
         conn.close()
+        print(f"Заказ #{order_id} не найден в базе данных!")
         return
 
     current_status = order['status']
@@ -127,13 +131,16 @@ def handle_order_action(call):
             conn.close()
             return
 
-        lines = items_desc.strip().split('\n')
-        for line in lines:
-            match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
-            if match:
-                prod_name = match.group(1).strip()
-                prod_count = int(match.group(2))
-                cur.execute("UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
+        try:
+            lines = items_desc.strip().split('\n')
+            for line in lines:
+                match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
+                if match:
+                    prod_name = match.group(1).strip()
+                    prod_count = int(match.group(2))
+                    cur.execute("UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
+        except Exception as e:
+            print(f"Ошибка при списании товаров со склада: {e}")
 
         cur.execute("UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
         conn.commit()
@@ -166,13 +173,16 @@ def handle_order_action(call):
             return
 
         if current_status == 'confirmed':
-            lines = items_desc.strip().split('\n')
-            for line in lines:
-                match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
-                if match:
-                    prod_name = match.group(1).strip()
-                    prod_count = int(match.group(2))
-                    cur.execute("UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+            try:
+                lines = items_desc.strip().split('\n')
+                for line in lines:
+                    match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
+                    if match:
+                        prod_name = match.group(1).strip()
+                        prod_count = int(match.group(2))
+                        cur.execute("UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+            except Exception as e:
+                print(f"Ошибка при возврате товаров на склад: {e}")
 
         cur.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
         conn.commit()
@@ -313,7 +323,7 @@ def create_order():
     except Exception as e:
         print(f"Ошибка отправки уведомления админу: {e}")
 
-    # 2. Уведомление для клиента (с номером и деталями заказа)
+    # 2. Уведомление для клиента
     client_message = (
         f"🎉 **Ваш заказ успешно оформлен!**\n\n"
         f"🔢 **Номер заказа:** #{order_id}\n\n"
