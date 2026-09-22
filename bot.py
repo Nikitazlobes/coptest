@@ -8,7 +8,7 @@ import json
 import threading
 
 # --- НАСТРОЙКИ ---
-TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAErKWlTfpV5EQPPSPCeZbAPopcfsJd5d-o')
+TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEtqssUoPKmbntEUEMMjyuv8S_CQ8ecuTY')
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
