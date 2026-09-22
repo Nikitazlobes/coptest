@@ -82,7 +82,7 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
 
@@ -92,8 +92,10 @@ def handle_order_action(call):
         bot.answer_callback_query(call.id, "Доступ запрещен", show_alert=True)
         return
 
-    action, order_id_str = call.data.split('_')[1], call.data.split('_')[2]
-    order_id = int(order_id_str)
+    # Безопасно разбиваем call.data (например: "order_confirm_1" или "order_cancel_1")
+    parts = call.data.split('_')
+    action = parts[1]        # 'confirm' или 'cancel'
+    order_id = int(parts[2]) # Номер заказа
 
     conn = get_db_connection()
     cur = conn.cursor()
