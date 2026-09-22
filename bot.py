@@ -202,7 +202,7 @@ def upload_pdf():
 
     if file.filename == '':
         return jsonify({"error": "Файл не выбран"}), 400
-
+        
     try:
         pdf_reader = PdfReader(io.BytesIO(file.read()))
         extracted_text = ""
@@ -210,13 +210,12 @@ def upload_pdf():
             text = page.extract_text()
             if text:
                 extracted_text += text + "\n"
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
+    except Exception as e:
+        return jsonify({"error": f"Ошибка чтения PDF: {str(e)}"}), 500
 
     added_count = 0
     lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
+
 
     i = 0
     while i < len(lines):
