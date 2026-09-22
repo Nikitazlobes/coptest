@@ -283,6 +283,7 @@ def create_order():
     cur.close()
     conn.close()
 
+    # 1. Уведомление для администратора
     admin_message = (
         f"🚨 **Новый заказ #{order_id}!**\n\n"
         f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
@@ -300,6 +301,20 @@ def create_order():
         bot.send_message(ADMIN_ID, admin_message, parse_mode="Markdown", reply_markup=markup)
     except Exception as e:
         print(f"Ошибка отправки уведомления админу: {e}")
+
+    # 2. Уведомление для клиента (с номером и деталями заказа)
+    client_message = (
+        f"🎉 **Ваш заказ успешно оформлен!**\n\n"
+        f"🔢 **Номер заказа:** #{order_id}\n\n"
+        f"📦 **Состав заказа:**\n{items_description}\n"
+        f"💰 **Итого к оплате:** {total} руб.\n\n"
+        f"⏳ Ожидайте подтверждения от администратора."
+    )
+
+    try:
+        bot.send_message(user_id, client_message, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Ошибка отправки уведомления клиенту: {e}")
 
     return jsonify({"status": "success", "message": "Заказ успешно оформлен"})
 
@@ -507,7 +522,6 @@ if __name__ == '__main__':
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Принудительно сбрасываем вебхуки на случай, если они зависли
     try:
         bot.remove_webhook()
         print("Вебхук успешно сброшен перед запуском polling.")
