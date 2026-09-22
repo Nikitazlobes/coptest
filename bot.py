@@ -507,6 +507,13 @@ if __name__ == '__main__':
     flask_thread.daemon = True
     flask_thread.start()
 
+    # Принудительно сбрасываем вебхуки на случай, если они зависли
+    try:
+        bot.remove_webhook()
+        print("Вебхук успешно сброшен перед запуском polling.")
+    except Exception as e:
+        print(f"Ошибка сброса вебхука: {e}")
+
     print("Бот начал опрос Telegram...")
     while True:
         try:
