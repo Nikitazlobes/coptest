@@ -114,7 +114,6 @@ def handle_all_callbacks(call):
     data = call.data
     print(f"Получен callback_data: {data}", flush=True)
 
-    # Ожидаем формат order_confirm_ID или order_cancel_ID
     if not data.startswith('order_'):
         return
 
@@ -198,7 +197,7 @@ def handle_all_callbacks(call):
             )
             bot.send_message(user_id, f"😔 Ваш заказ #{order_id} был отменен администратором.")
         except Exception as e:
-            print(f`Ошибка редактирования сообщения: {e}`)
+            print(f"Ошибка редактирования сообщения: {e}")
 
     cur.close()
     conn.close()
