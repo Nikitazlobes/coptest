@@ -8,14 +8,19 @@ from threading import Thread
 import io
 import re
 from pypdf import PdfReader
+import uuid
 
 # Настройки
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAErKWlTfpV5EQPPSPCeZbAPopcfsJd5d-o')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 1318983685))
 DB_NAME = 'c-opt-store.db'
 
+# Папка для загрузки картинок
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 bot = telebot.TeleBot(TOKEN)
-flask_app = Flask(__name__)
+flask_app = Flask(__name__, static_folder='static', static_url_path='/static')
 CORS(flask_app)
 
 def get_db_connection():
@@ -112,6 +117,31 @@ def add_product():
     cur.close()
     conn.close()
     return jsonify({"status": "success"})
+
+@flask_app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    user_id = request.form.get('user_id', type=int)
+    if user_id != ADMIN_ID:
+        return jsonify({"error": "Доступ запрещен"}), 403
+
+    if 'image' not in request.files:
+        return jsonify({"error": "Файл не найден"}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"error": "Файл не выбран"}), 400
+
+    try:
+        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'jpg'
+        filename = f"{uuid.uuid4()}.{ext}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        file.save(filepath)
+        
+        image_url = f"/static/uploads/{filename}"
+        return jsonify({"status": "success", "image_url": image_url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @flask_app.route('/api/order', methods=['POST'])
 def create_order():
