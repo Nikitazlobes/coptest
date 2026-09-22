@@ -288,12 +288,12 @@ def create_order():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Автоматическая привязка вебхука при старте
+    # Автоматическая принудительная установка вебхука при старте
     webhook_url = f"{RENDER_URL}/webhook"
     try:
         bot.remove_webhook()
-        bot.set_webhook(url=webhook_url)
-        print(f"Вебхук успешно установлен на: {webhook_url}", flush=True)
+        success = bot.set_webhook(url=webhook_url)
+        print(f"Попытка установить вебхук на {webhook_url}: {'Успешно' if success else 'Ошибка'}", flush=True)
     except Exception as e:
         print(f"Ошибка при автоустановке вебхука: {e}", flush=True)
 
