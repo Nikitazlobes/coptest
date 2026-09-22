@@ -236,8 +236,8 @@
                 <input type="number" id="add-price" placeholder="1500">
             </div>
             <div class="form-group">
-                <label>Ссылка на картинку (URL)</label>
-                <input type="text" id="add-image" placeholder="https://site.com/image.jpg">
+                <label>Фотография товара (JPG/PNG)</label>
+                <input type="file" id="add-image-file" accept="image/*" style="padding: 6px;">
             </div>
             <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
         </div>
@@ -304,6 +304,32 @@
             }
         }
 
+        async function uploadImageFile(fileInputId) {
+            const fileInput = document.getElementById(fileInputId);
+            if (!fileInput.files || fileInput.files.length === 0) return '';
+
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+            formData.append('user_id', currentUserId);
+
+            try {
+                const response = await fetch('/api/upload-image', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    return result.image_url;
+                } else {
+                    alert('Ошибка загрузки фото: ' + result.error);
+                    return '';
+                }
+            } catch (e) {
+                alert('Ошибка сети при загрузке фото');
+                return '';
+            }
+        }
+
         async function fetchProducts() {
             try {
                 const response = await fetch('/api/products');
@@ -356,37 +382,40 @@
         async function addNewProduct() {
             const name = document.getElementById('add-name').value;
             const price = parseFloat(document.getElementById('add-price').value);
-            const imageUrl = document.getElementById('add-image').value;
             const btn = document.getElementById('add-btn');
             
-            if (name && price) {
-                btn.innerText = 'Сохранение...';
-                const newProd = { id: Date.now(), name: name, price: price, quantity: 0, image_url: imageUrl, user_id: currentUserId };
-                
-                try {
-                    const response = await fetch('/api/products', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(newProd)
-                    });
-                    
-                    if (response.ok) {
-                        fetchProducts();
-                        document.getElementById('add-name').value = '';
-                        document.getElementById('add-price').value = '';
-                        document.getElementById('add-image').value = '';
-                        if (tg) { tg.showAlert('Товар успешно сохранен в базе!'); } else { alert('Товар успешно сохранен в базе!'); }
-                        switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
-                    } else {
-                        if (tg) { tg.showAlert('Доступ запрещен.'); }
-                    }
-                } catch (e) {
-                    if (tg) tg.showAlert('Ошибка сети.');
-                }
-                btn.innerText = 'Сохранить в базу';
-            } else {
+            if (!name || isNaN(price)) {
                 alert('Заполните название и цену!');
+                return;
             }
+
+            btn.innerText = 'Загрузка фото...';
+            let imageUrl = await uploadImageFile('add-image-file');
+
+            btn.innerText = 'Сохранение...';
+            const newProd = { id: Date.now(), name: name, price: price, quantity: 0, image_url: imageUrl, user_id: currentUserId };
+            
+            try {
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newProd)
+                });
+                
+                if (response.ok) {
+                    fetchProducts();
+                    document.getElementById('add-name').value = '';
+                    document.getElementById('add-price').value = '';
+                    document.getElementById('add-image-file').value = '';
+                    if (tg) { tg.showAlert('Товар успешно сохранен в базе!'); } else { alert('Товар успешно сохранен в базе!'); }
+                    switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
+                } else {
+                    if (tg) { tg.showAlert('Доступ запрещен.'); }
+                }
+            } catch (e) {
+                if (tg) tg.showAlert('Ошибка сети.');
+            }
+            btn.innerText = 'Сохранить в базу';
         }
 
         function addToCart(id) {
@@ -535,7 +564,8 @@
             document.getElementById('edit-name').value = name;
             document.getElementById('edit-price').value = price;
             document.getElementById('edit-quantity').value = quantity;
-            document.getElementById('edit-image').value = imageUrl || '';
+            document.getElementById('edit-image-url').value = imageUrl || '';
+            document.getElementById('edit-image-file').value = '';
             document.getElementById('edit-modal').style.display = 'flex';
         }
 
@@ -548,11 +578,19 @@
             const name = document.getElementById('edit-name').value;
             const price = parseFloat(document.getElementById('edit-price').value);
             const quantity = parseInt(document.getElementById('edit-quantity').value);
-            const imageUrl = document.getElementById('edit-image').value;
+            let imageUrl = document.getElementById('edit-image-url').value;
 
             if (!name || isNaN(price) || isNaN(quantity)) {
                 alert('Заполните все поля корректно!');
                 return;
+            }
+
+            const fileInput = document.getElementById('edit-image-file');
+            if (fileInput.files && fileInput.files.length > 0) {
+                const newUrl = await uploadImageFile('edit-image-file');
+                if (newUrl) {
+                    imageUrl = newUrl;
+                }
             }
 
             try {
@@ -603,7 +641,7 @@
                     alert('Ошибка: ' + (result.error || 'Не удалось удалить товар'));
                 }
             } catch (e) {
-                alert('Ошибка сети при удалении товара');
+                alert('Ошибка сети при удалении товар');
             }
         }
 
@@ -615,6 +653,7 @@
         <div style="background: var(--card-bg); border: 1px solid var(--card-border); color: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
             <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">Редактировать товар</h3>
             <input type="hidden" id="edit-id">
+            <input type="hidden" id="edit-image-url">
             
             <div class="form-group">
                 <label>Название</label>
@@ -632,8 +671,8 @@
             </div>
 
             <div class="form-group">
-                <label>Ссылка на картинку (URL)</label>
-                <input type="text" id="edit-image" placeholder="https://site.com/image.jpg">
+                <label>Заменить фотографию (JPG/PNG)</label>
+                <input type="file" id="edit-image-file" accept="image/*" style="padding: 6px;">
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 15px;">
