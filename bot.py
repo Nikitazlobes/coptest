@@ -75,6 +75,7 @@ init_db()
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    print(f"Получена команда /start от пользователя {message.from_user.id}")
     markup = telebot.types.InlineKeyboardMarkup()
     web_app = telebot.types.WebAppInfo(url="https://coptest.onrender.com")
     markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть магазин C-opt EST", web_app=web_app))
@@ -144,7 +145,7 @@ def handle_order_action(call):
         bot.answer_callback_query(call.id, "Заказ подтвержден, со склада списаны товары.")
         
         try:
-            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором !")
+            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором!")
         except Exception:
             pass
 
@@ -506,6 +507,7 @@ if __name__ == '__main__':
     flask_thread.daemon = True
     flask_thread.start()
 
+    print("Бот начал опрос Telegram...")
     while True:
         try:
             bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
