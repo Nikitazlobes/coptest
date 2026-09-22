@@ -99,7 +99,6 @@ def send_welcome(message):
         reply_markup=markup
     )
 
-# Команда для принудительной привязки вебхука прямо в чате
 @bot.message_handler(commands=['setwebhook'])
 def force_set_webhook(message):
     if message.from_user.id != ADMIN_ID:
@@ -112,21 +111,13 @@ def force_set_webhook(message):
     else:
         bot.send_message(message.chat.id, "❌ Не удалось привязать вебхук.")
 
-# Универсальный обработчик ВСЕХ нажатий на инлайн-кнопки
+# Обработчик нажатий без лишних вызовов answer_callback_query, вызывающих 429 ошибку
 @bot.callback_query_handler(func=lambda call: True)
 def handle_all_callbacks(call):
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception as e:
-        print(f"Ошибка answer_callback_query: {e}")
-
     if call.from_user.id != ADMIN_ID:
-        bot.send_message(call.message.chat.id, "❌ У вас нет прав для этого действия.")
         return
 
     data = call.data
-    print(f"Получен callback_data: {data}", flush=True)
-
     if not data.startswith('order_'):
         return
 
@@ -134,7 +125,7 @@ def handle_all_callbacks(call):
     if len(parts) < 3:
         return
 
-    action = parts[1]  # confirm или cancel
+    action = parts[1]
     try:
         order_id = int(parts[2])
     except ValueError:
@@ -148,7 +139,6 @@ def handle_all_callbacks(call):
     if not order:
         cur.close()
         conn.close()
-        bot.send_message(call.message.chat.id, f"⚠️ Заказ #{order_id} не найден в базе.")
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
         except Exception:
@@ -190,7 +180,7 @@ def handle_all_callbacks(call):
             )
             bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден и передан в сборку!")
         except Exception as e:
-            print(f"Ошибка редактирования сообщения: {e}")
+            print(f"Ошибка редактирования: {e}")
 
     elif action == 'cancel':
         if current_status == 'cancelled':
@@ -210,7 +200,7 @@ def handle_all_callbacks(call):
             )
             bot.send_message(user_id, f"😔 Ваш заказ #{order_id} был отменен администратором.")
         except Exception as e:
-            print(f"Ошибка редактирования сообщения: {e}")
+            print(f"Ошибка редактирования: {e}")
 
     cur.close()
     conn.close()
