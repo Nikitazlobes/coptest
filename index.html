@@ -74,6 +74,15 @@
             justify-content: space-between;
         }
 
+        .product-img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #0b0f19;
+        }
+
         .product-title {
             font-size: 14px;
             font-weight: 600;
@@ -226,6 +235,10 @@
                 <label>Цена (руб)</label>
                 <input type="number" id="add-price" placeholder="1500">
             </div>
+            <div class="form-group">
+                <label>Ссылка на картинку (URL)</label>
+                <input type="text" id="add-image" placeholder="https://site.com/image.jpg">
+            </div>
             <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
         </div>
 
@@ -273,12 +286,10 @@
             }
         }
 
-        // Страховка для стабильной работы админки в сторонних клиентах
         if (!currentUserId) {
             currentUserId = ADMIN_ID;
         }
 
-        // Проверка прав доступа для интерфейса
         if (currentUserId !== ADMIN_ID) {
             const adminNavButton = document.querySelectorAll('.nav-item')[2];
             if (adminNavButton) adminNavButton.style.display = 'none';
@@ -293,7 +304,6 @@
             }
         }
 
-        // Загрузка товаров из базы данных
         async function fetchProducts() {
             try {
                 const response = await fetch('/api/products');
@@ -305,49 +315,53 @@
         }
 
         function renderProducts() {
-    const list = document.getElementById('product-list');
-    list.innerHTML = '';
-    if (!products || products.length === 0) {
-        list.innerHTML = '<p style="color: var(--text-secondary);">Товаров пока нет.</p>';
-        return;
-    }
-    products.forEach(p => {
-        let adminButtons = '';
-        if (currentUserId === ADMIN_ID) {
-            const safeName = (p.name || '').replace(/'/g, "\\'");
-            adminButtons = `
-                <div style="display: flex; gap: 5px; margin-top: 5px;">
-                    <button class="btn" style="background: #e67e22;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0})">Изменить</button>
-                    <button class="btn" style="background: var(--danger-color);" onclick="deleteProduct(${p.id})">Удалить</button>
-                </div>
-            `;
+            const list = document.getElementById('product-list');
+            list.innerHTML = '';
+            if (!products || products.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-secondary);">Товаров пока нет.</p>';
+                return;
+            }
+            products.forEach(p => {
+                let adminButtons = '';
+                if (currentUserId === ADMIN_ID) {
+                    const safeName = (p.name || '').replace(/'/g, "\\'");
+                    const safeImage = (p.image_url || '').replace(/'/g, "\\'");
+                    adminButtons = `
+                        <div style="display: flex; gap: 5px; margin-top: 8px;">
+                            <button class="btn" style="background: #e67e22;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0}, '${safeImage}')">Изменить</button>
+                            <button class="btn" style="background: var(--danger-color);" onclick="deleteProduct(${p.id})">Удалить</button>
+                        </div>
+                    `;
+                }
+
+                const imgHtml = p.image_url ? `<img src="${p.image_url}" class="product-img" alt="${p.name}">` : '';
+
+                list.innerHTML += `
+                    <div class="product-card">
+                        <div>
+                            ${imgHtml}
+                            <div class="product-title">${p.name}</div>
+                            <div class="product-price">${p.price} ₽</div>
+                            <div style="font-size: 12px; color: gray;">Остаток: ${p.quantity || 0} шт.</div>
+                        </div>
+                        <div>
+                            <button class="btn" onclick="addToCart(${p.id})">В корзину</button>
+                            ${adminButtons}
+                        </div>
+                    </div>
+                `;
+            });
         }
-
-        list.innerHTML += `
-            <div class="product-card">
-                <div>
-                    <div class="product-title">${p.name}</div>
-                    <div class="product-price">${p.price} ₽</div>
-                    <div style="font-size: 12px; color: gray;">Остаток: ${p.quantity || 0} шт.</div>
-                </div>
-                <div>
-                    <button class="btn" onclick="addToCart(${p.id})">В корзину</button>
-                    ${adminButtons}
-                </div>
-            </div>
-        `;
-    });
-}
-
 
         async function addNewProduct() {
             const name = document.getElementById('add-name').value;
             const price = parseFloat(document.getElementById('add-price').value);
+            const imageUrl = document.getElementById('add-image').value;
             const btn = document.getElementById('add-btn');
             
             if (name && price) {
                 btn.innerText = 'Сохранение...';
-                const newProd = { id: Date.now(), name: name, price: price, user_id: currentUserId };
+                const newProd = { id: Date.now(), name: name, price: price, quantity: 0, image_url: imageUrl, user_id: currentUserId };
                 
                 try {
                     const response = await fetch('/api/products', {
@@ -360,6 +374,7 @@
                         fetchProducts();
                         document.getElementById('add-name').value = '';
                         document.getElementById('add-price').value = '';
+                        document.getElementById('add-image').value = '';
                         if (tg) { tg.showAlert('Товар успешно сохранен в базе!'); } else { alert('Товар успешно сохранен в базе!'); }
                         switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
                     } else {
@@ -369,6 +384,8 @@
                     if (tg) tg.showAlert('Ошибка сети.');
                 }
                 btn.innerText = 'Сохранить в базу';
+            } else {
+                alert('Заполните название и цену!');
             }
         }
 
@@ -513,11 +530,12 @@
             btn.innerText = 'Загрузить из PDF';
         }
 
-        function openEditModal(id, name, price, quantity) {
+        function openEditModal(id, name, price, quantity, imageUrl) {
             document.getElementById('edit-id').value = id;
             document.getElementById('edit-name').value = name;
             document.getElementById('edit-price').value = price;
             document.getElementById('edit-quantity').value = quantity;
+            document.getElementById('edit-image').value = imageUrl || '';
             document.getElementById('edit-modal').style.display = 'flex';
         }
 
@@ -530,6 +548,7 @@
             const name = document.getElementById('edit-name').value;
             const price = parseFloat(document.getElementById('edit-price').value);
             const quantity = parseInt(document.getElementById('edit-quantity').value);
+            const imageUrl = document.getElementById('edit-image').value;
 
             if (!name || isNaN(price) || isNaN(quantity)) {
                 alert('Заполните все поля корректно!');
@@ -545,7 +564,8 @@
                         id: id,
                         name: name,
                         price: price,
-                        quantity: quantity
+                        quantity: quantity,
+                        image_url: imageUrl
                     })
                 });
 
@@ -562,34 +582,32 @@
             }
         }
 
-        // Запуск загрузки товаров при открытии страницы
-        fetchProducts();
-async function deleteProduct(id) {
-    if (!confirm('Вы уверены, что хотите удалить этот товар?')) return;
+        async function deleteProduct(id) {
+            if (!confirm('Вы уверены, что хотите удалить этот товар?')) return;
 
-    try {
-        const response = await fetch('/api/delete-product', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                user_id: currentUserId,
-                id: id
-            })
-        });
+            try {
+                const response = await fetch('/api/delete-product', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUserId,
+                        id: id
+                    })
+                });
 
-        const result = await response.json();
-        if (response.ok) {
-            alert('Товар успешно удален!');
-            fetchProducts();
-        } else {
-            alert('Ошибка: ' + (result.error || 'Не удалось удалить товар'));
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Товар успешно удален!');
+                    fetchProducts();
+                } else {
+                    alert('Ошибка: ' + (result.error || 'Не удалось удалить товар'));
+                }
+            } catch (e) {
+                alert('Ошибка сети при удалении товара');
+            }
         }
-    } catch (e) {
-        alert('Ошибка сети при удалении товара');
-    }
-}
 
-
+        fetchProducts();
     </script>
 
     <!-- Модальное окно редактирования -->
@@ -611,6 +629,11 @@ async function deleteProduct(id) {
             <div class="form-group">
                 <label>Количество (шт)</label>
                 <input type="number" id="edit-quantity">
+            </div>
+
+            <div class="form-group">
+                <label>Ссылка на картинку (URL)</label>
+                <input type="text" id="edit-image" placeholder="https://site.com/image.jpg">
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 15px;">
