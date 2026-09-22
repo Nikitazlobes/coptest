@@ -12,10 +12,8 @@ ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
 
-# Отключаем потоки для стабильной работы вебхуков на сервере
 bot = telebot.TeleBot(TOKEN, parse_mode=None, threaded=False)
 
-# Настраиваем Flask (статические файлы и корень проекта)
 flask_app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(flask_app)
 
@@ -67,7 +65,7 @@ def init_db():
 
 init_db()
 
-# --- МАРШРУТЫ ДЛЯ МИНИ-ПРИЛОЖЕНИЯ И ВЕБХУКА ---
+# --- МАРШРУТЫ ---
 
 @flask_app.route('/')
 def index():
@@ -75,7 +73,7 @@ def index():
     file_path = os.path.join(base_dir, 'index.html')
     if os.path.exists(file_path):
         return send_file(file_path)
-    return "Файл index.html не найден в корне проекта!", 404
+    return "Файл index.html не найден", 404
 
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
@@ -87,17 +85,7 @@ def webhook():
         print(f"Ошибка webhook: {e}", flush=True)
     return '', 200
 
-@flask_app.route('/set_webhook', methods=['GET'])
-def setup_webhook_route():
-    webhook_url = f"{RENDER_URL}/webhook"
-    bot.remove_webhook()
-    success = bot.set_webhook(url=webhook_url)
-    if success:
-        return f"✅ Вебхук успешно установлен на: {webhook_url}", 200
-    else:
-        return "❌ Ошибка установки вебхука", 500
-
-# --- ЛОГИКА ТЕЛЕГРАМ БОТА ---
+# --- ТЕЛЕГРАМ БОТ ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -111,10 +99,11 @@ def send_welcome(message):
         reply_markup=markup
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
-def handle_order_action(call):
+# Универсальный обработчик ВСЕХ нажатий на инлайн-кнопки
+@bot.callback_query_handler(func=lambda call: True)
+def handle_all_callbacks(call):
     try:
-        bot.answer_callback_query(call.id, text="Обработка...")
+        bot.answer_callback_query(call.id)
     except Exception as e:
         print(f"Ошибка answer_callback_query: {e}")
 
@@ -122,14 +111,21 @@ def handle_order_action(call):
         bot.send_message(call.message.chat.id, "❌ У вас нет прав для этого действия.")
         return
 
+    data = call.data
+    print(f"Получен callback_data: {data}", flush=True)
+
+    # Ожидаем формат order_confirm_ID или order_cancel_ID
+    if not data.startswith('order_'):
+        return
+
+    parts = data.split('_')
+    if len(parts) < 3:
+        return
+
+    action = parts[1]  # confirm или cancel
     try:
-        parts = call.data.split('_')
-        if len(parts) < 3:
-            return
-        action = parts[1]
         order_id = int(parts[2])
-    except Exception as e:
-        print(f"Ошибка парсинга callback_data: {e}")
+    except ValueError:
         return
 
     conn = get_db_connection()
@@ -140,10 +136,7 @@ def handle_order_action(call):
     if not order:
         cur.close()
         conn.close()
-        bot.send_message(
-            call.message.chat.id, 
-            f"⚠️ Заказ #{order_id} не найден в базе (возможно, база обновилась при перезагрузке сервера)."
-        )
+        bot.send_message(call.message.chat.id, f"⚠️ Заказ #{order_id} не найден в базе.")
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
         except Exception:
@@ -205,12 +198,12 @@ def handle_order_action(call):
             )
             bot.send_message(user_id, f"😔 Ваш заказ #{order_id} был отменен администратором.")
         except Exception as e:
-            print(f"Ошибка редактирования сообщения: {e}")
+            print(f`Ошибка редактирования сообщения: {e}`)
 
     cur.close()
     conn.close()
 
-# --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
+# --- API ---
 
 @flask_app.route('/api/products', methods=['GET'])
 def get_products():
@@ -229,8 +222,6 @@ def create_order():
         if not data:
             data = request.form.to_dict()
             
-        print(f"Входящий заказ: {data}", flush=True)
-        
         user_id = data.get('user_id')
         username = data.get('username', 'Неизвестен')
         cart = data.get('cart', [])
@@ -288,14 +279,13 @@ def create_order():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Автоматическая принудительная установка вебхука при старте
     webhook_url = f"{RENDER_URL}/webhook"
     try:
         bot.remove_webhook()
         success = bot.set_webhook(url=webhook_url)
-        print(f"Попытка установить вебхук на {webhook_url}: {'Успешно' if success else 'Ошибка'}", flush=True)
+        print(f"Вебхук установлен: {success}", flush=True)
     except Exception as e:
-        print(f"Ошибка при автоустановке вебхука: {e}", flush=True)
+        print(f"Ошибка установки вебхука: {e}", flush=True)
 
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
