@@ -132,7 +132,12 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            cursor: pointer;
             transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+        }
+
+        .product-card:active {
+            transform: scale(0.98);
         }
 
         .product-img {
@@ -286,13 +291,13 @@
             font-weight: 600;
         }
 
-        /* Модальное окно редактирования */
-        #edit-modal {
+        /* Модальные окна */
+        #edit-modal, #product-modal {
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(5px);
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
             z-index: 2000;
             justify-content: center;
             align-items: center;
@@ -305,6 +310,8 @@
             padding: 20px;
             width: 100%;
             max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
             animation: fadeIn 0.3s ease;
         }
     </style>
@@ -401,6 +408,21 @@
                 <input type="number" id="markup-rubles" value="150" placeholder="150">
             </div>
             <button class="btn btn-secondary" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить прайс</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно просмотра детальной карточки товара -->
+    <div id="product-modal">
+        <div class="modal-content" style="text-align: center;">
+            <div id="modal-img-container" style="margin-bottom: 14px;"></div>
+            <h3 id="modal-title" style="font-size: 16px; font-weight: 700; margin-bottom: 10px; color: var(--text-primary); text-align: left; word-break: break-word;"></h3>
+            <div id="modal-price" style="font-size: 20px; font-weight: 700; color: #a5b4fc; margin-bottom: 6px; text-align: left;"></div>
+            <div id="modal-quantity" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; text-align: left;"></div>
+            
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" style="flex: 1;" onclick="closeProductModal()">Закрыть</button>
+                <button class="btn" style="flex: 2;" id="modal-add-btn">В корзину</button>
+            </div>
         </div>
     </div>
 
@@ -536,7 +558,7 @@
                     const safeName = (p.name || '').replace(/'/g, "\\'");
                     const safeImage = (p.image_url || '').replace(/'/g, "\\'");
                     adminButtons = `
-                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                        <div style="display: flex; gap: 6px; margin-top: 8px;" onclick="event.stopPropagation()">
                             <button class="btn btn-secondary" style="padding: 6px; font-size: 12px;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0}, '${safeImage}')">Изменить</button>
                             <button class="btn btn-secondary" style="padding: 6px; font-size: 12px; color: var(--danger-color);" onclick="deleteProduct(${p.id})">Удалить</button>
                         </div>
@@ -546,7 +568,7 @@
                 const imgHtml = p.image_url ? `<img src="${p.image_url}" class="product-img" alt="${p.name}">` : '';
 
                 list.innerHTML += `
-                    <div class="product-card">
+                    <div class="product-card" onclick="openProductModal(${p.id})">
                         <div>
                             ${imgHtml}
                             <div class="product-title">${p.name}</div>
@@ -554,12 +576,40 @@
                             <div style="font-size: 11px; color: var(--text-secondary);">Остаток: ${p.quantity || 0} шт.</div>
                         </div>
                         <div style="margin-top: 10px;">
-                            <button class="btn" style="padding: 8px; font-size: 13px;" onclick="addToCart(${p.id})">В корзину</button>
+                            <button class="btn" style="padding: 8px; font-size: 13px;" onclick="event.stopPropagation(); addToCart(${p.id})">В корзину</button>
                             ${adminButtons}
                         </div>
                     </div>
                 `;
             });
+        }
+
+        function openProductModal(id) {
+            const p = products.find(item => item.id === id);
+            if (!p) return;
+
+            const imgContainer = document.getElementById('modal-img-container');
+            if (p.image_url) {
+                imgContainer.innerHTML = `<img src="${p.image_url}" style="width: 100%; max-height: 280px; object-fit: contain; border-radius: 12px; background: #0b0f19;" alt="${p.name}">`;
+            } else {
+                imgContainer.innerHTML = '';
+            }
+
+            document.getElementById('modal-title').innerText = p.name;
+            document.getElementById('modal-price').innerText = p.price + ' ₽';
+            document.getElementById('modal-quantity').innerText = `Остаток на складе: ${p.quantity || 0} шт.`;
+
+            const addBtn = document.getElementById('modal-add-btn');
+            addBtn.onclick = function() {
+                addToCart(p.id);
+                closeProductModal();
+            };
+
+            document.getElementById('product-modal').style.display = 'flex';
+        }
+
+        function closeProductModal() {
+            document.getElementById('product-modal').style.display = 'none';
         }
 
         async function addNewProduct() {
