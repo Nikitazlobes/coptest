@@ -48,6 +48,27 @@
             100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
         }
 
+        /* Анимация добавления в корзину для кнопки */
+        @keyframes addToCartPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.08); background: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
+            100% { transform: scale(1); }
+        }
+
+        .btn-added-anim {
+            animation: addToCartPulse 0.35s ease;
+        }
+
+        /* Анимация прыжка иконки корзины */
+        @keyframes cartBounce {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-6px) scale(1.25); color: #10b981; }
+        }
+
+        .cart-bounce-anim {
+            animation: cartBounce 0.35s ease;
+        }
+
         .tab-content {
             display: none;
             padding: 16px;
@@ -177,7 +198,7 @@
             font-size: 14px;
             cursor: pointer;
             width: 100%;
-            transition: opacity 0.2s, transform 0.1s;
+            transition: opacity 0.2s, transform 0.1s, background 0.3s;
             box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
         }
 
@@ -465,8 +486,8 @@
             <div class="nav-icon-wrapper"><span class="nav-icon">🛍️</span></div>
             <span>Каталог</span>
         </div>
-        <div class="nav-item" onclick="switchTab('cart', this)">
-            <div class="nav-icon-wrapper"><span class="nav-icon">🛒</span></div>
+        <div class="nav-item" id="nav-cart-tab" onclick="switchTab('cart', this)">
+            <div class="nav-icon-wrapper" id="cart-icon-wrapper"><span class="nav-icon">🛒</span></div>
             <span>Корзина</span>
         </div>
         <div class="nav-item" id="nav-admin" onclick="switchTab('admin', this)" style="display: none;">
@@ -576,7 +597,7 @@
                             <div style="font-size: 11px; color: var(--text-secondary);">Остаток: ${p.quantity || 0} шт.</div>
                         </div>
                         <div style="margin-top: 10px;">
-                            <button class="btn" style="padding: 8px; font-size: 13px;" onclick="event.stopPropagation(); addToCart(${p.id})">В корзину</button>
+                            <button class="btn" id="btn-cart-${p.id}" style="padding: 8px; font-size: 13px;" onclick="event.stopPropagation(); addToCart(${p.id}, this)">В корзину</button>
                             ${adminButtons}
                         </div>
                     </div>
@@ -601,7 +622,8 @@
 
             const addBtn = document.getElementById('modal-add-btn');
             addBtn.onclick = function() {
-                addToCart(p.id);
+                const catalogBtn = document.getElementById(`btn-cart-${p.id}`);
+                addToCart(p.id, catalogBtn);
                 closeProductModal();
             };
 
@@ -711,12 +733,33 @@
             } catch (e) {}
         }
 
-        function addToCart(id) {
+        function addToCart(id, buttonElement) {
             const item = products.find(p => p.id === id);
             if (item) {
                 cart.push(item);
                 updateCart();
-                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+                
+                // Telegram тактильная отдача
+                if (tg && tg.HapticFeedback) {
+                    tg.HapticFeedback.impactOccurred('medium');
+                }
+
+                // Запуск анимации кнопки
+                if (buttonElement) {
+                    buttonElement.classList.add('btn-added-anim');
+                    setTimeout(() => {
+                        buttonElement.classList.remove('btn-added-anim');
+                    }, 350);
+                }
+
+                // Запуск анимации иконки корзины внизу
+                const cartIconWrapper = document.getElementById('cart-icon-wrapper');
+                if (cartIconWrapper) {
+                    cartIconWrapper.classList.add('cart-bounce-anim');
+                    setTimeout(() => {
+                        cartIconWrapper.classList.remove('cart-bounce-anim');
+                    }, 350);
+                }
             }
         }
 
