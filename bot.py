@@ -88,22 +88,27 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_action(call):
-    if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "Доступ запрещен", show_alert=True)
-        return
-
-    # В САМОМ НАЧАЛЕ ВСЕГДА гасим анимацию загрузки на кнопке
+    # 1. САМОЕ ПЕРВОЕ ДЕЙСТВИЕ — мгновенно гасим кнопку, чтобы она не крутилась
     try:
         bot.answer_callback_query(call.id)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Ошибка ответа Telegram: {e}")
+
+    # 2. Проверка прав (всплывающее окно убрано, чтобы не вызывать зависание)
+    if call.from_user.id != ADMIN_ID:
+        bot.send_message(
+            call.message.chat.id, 
+            f"❌ Доступ запрещен.\nВаш ID: `{call.from_user.id}`\nID администратора в коде: `{ADMIN_ID}`",
+            parse_mode="Markdown"
+        )
+        return
 
     try:
         parts = call.data.split('_')
         if len(parts) < 3:
             return
-        action = parts[1]        # 'confirm' или 'cancel'
-        order_id = int(parts[2]) # Номер заказа
+        action = parts[1]
+        order_id = int(parts[2])
     except Exception as e:
         print(f"Ошибка парсинга callback_data: {e}")
         return
@@ -113,10 +118,18 @@ def handle_order_action(call):
     cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
     order = cur.fetchone()
 
+    # 3. Защита от сброшенной базы данных
     if not order:
         cur.close()
         conn.close()
-        print(f"Заказ #{order_id} не найден в базе данных!")
+        bot.send_message(
+            call.message.chat.id, 
+            f"⚠️ Заказ #{order_id} не найден в базе данных (вероятно, база была очищена при перезапуске сервера)."
+        )
+        try:
+            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+        except Exception:
+            pass
         return
 
     current_status = order['status']
