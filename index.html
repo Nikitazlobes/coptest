@@ -48,7 +48,6 @@
             100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
         }
 
-        /* Анимация добавления в корзину для кнопки */
         @keyframes addToCartPulse {
             0% { transform: scale(1); }
             50% { transform: scale(1.08); background: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
@@ -59,7 +58,6 @@
             animation: addToCartPulse 0.35s ease;
         }
 
-        /* Анимация прыжка иконки корзины */
         @keyframes cartBounce {
             0%, 100% { transform: translateY(0) scale(1); }
             50% { transform: translateY(-6px) scale(1.25); color: #10b981; }
@@ -312,7 +310,6 @@
             font-weight: 600;
         }
 
-        /* Модальные окна */
         #edit-modal, #product-modal {
             display: none;
             position: fixed;
@@ -432,7 +429,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно просмотра детальной карточки товара -->
+    <!-- Модальное окно просмотра товара -->
     <div id="product-modal">
         <div class="modal-content" style="text-align: center;">
             <div id="modal-img-container" style="margin-bottom: 14px;"></div>
@@ -447,7 +444,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно редактирования товара -->
+    <!-- Модальное окно редактирования -->
     <div id="edit-modal">
         <div class="modal-content">
             <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #a5b4fc;">✏️ Редактировать товар</h3>
@@ -739,12 +736,10 @@
                 cart.push(item);
                 updateCart();
                 
-                // Telegram тактильная отдача
                 if (tg && tg.HapticFeedback) {
                     tg.HapticFeedback.impactOccurred('medium');
                 }
 
-                // Запуск анимации кнопки
                 if (buttonElement) {
                     buttonElement.classList.add('btn-added-anim');
                     setTimeout(() => {
@@ -752,7 +747,6 @@
                     }, 350);
                 }
 
-                // Запуск анимации иконки корзины внизу
                 const cartIconWrapper = document.getElementById('cart-icon-wrapper');
                 if (cartIconWrapper) {
                     cartIconWrapper.classList.add('cart-bounce-anim');
@@ -831,8 +825,15 @@
                     fetchUserStats();
                     fetchProducts();
                     switchTab('home', document.querySelectorAll('.nav-item')[0]);
+                } else {
+                    const errText = await response.text();
+                    const msg = 'Ошибка сервера (' + response.status + '): ' + errText;
+                    if (tg) { tg.showAlert(msg); } else { alert(msg); }
                 }
-            } catch (error) {}
+            } catch (error) {
+                const msg = 'Ошибка сети: ' + error.message;
+                if (tg) { tg.showAlert(msg); } else { alert(msg); }
+            }
         }
 
         function switchTab(tabId, el) {
