@@ -10,12 +10,11 @@ import re
 from pypdf import PdfReader
 import uuid
 
-# Настройки
+# --- НАСТРОЙКИ ---
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAErKWlTfpV5EQPPSPCeZbAPopcfsJd5d-o')
-ADMIN_ID = int(os.environ.get('ADMIN_ID', 1318983685))
+ADMIN_ID = 1318983685  # Ваш фиксированный ID администратора
 DB_NAME = 'c-opt-store.db'
 
-# Папка для загрузки картинок
 UPLOAD_FOLDER = 'static/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -75,7 +74,7 @@ init_db()
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    print(f"Получена команда /start от пользователя {message.from_user.id}")
+    print(f"Команда /start от ID: {message.from_user.id}", flush=True)
     markup = telebot.types.InlineKeyboardMarkup()
     web_app = telebot.types.WebAppInfo(url="https://coptest.onrender.com")
     markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть магазин C-opt EST", web_app=web_app))
@@ -88,17 +87,20 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_action(call):
-    # 1. САМОЕ ПЕРВОЕ ДЕЙСТВИЕ — мгновенно гасим кнопку, чтобы она не крутилась
+    print(f"\n--- ПОЛУЧЕН КЛИК ПО КНОПКЕ: {call.data} ОТ USER_ID: {call.from_user.id} ---", flush=True)
+    
+    # 1. Мгновенный ответ Telegram, чтобы погасить крутящуюся анимацию
     try:
         bot.answer_callback_query(call.id)
     except Exception as e:
-        print(f"Ошибка ответа Telegram: {e}")
+        print(f"Ошибка answer_callback_query: {e}", flush=True)
 
-    # 2. Проверка прав (всплывающее окно убрано, чтобы не вызывать зависание)
+    # 2. Проверка прав администратора
     if call.from_user.id != ADMIN_ID:
+        print(f"ОТКЛОНЕНО: ID {call.from_user.id} не равен ADMIN_ID {ADMIN_ID}", flush=True)
         bot.send_message(
             call.message.chat.id, 
-            f"❌ Доступ запрещен.\nВаш ID: `{call.from_user.id}`\nID администратора в коде: `{ADMIN_ID}`",
+            f"❌ Доступ запрещен. Вы не являетесь администратором.",
             parse_mode="Markdown"
         )
         return
@@ -110,7 +112,7 @@ def handle_order_action(call):
         action = parts[1]
         order_id = int(parts[2])
     except Exception as e:
-        print(f"Ошибка парсинга callback_data: {e}")
+        print(f"Ошибка парсинга callback_data: {e}", flush=True)
         return
 
     conn = get_db_connection()
@@ -118,13 +120,12 @@ def handle_order_action(call):
     cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
     order = cur.fetchone()
 
-    # 3. Защита от сброшенной базы данных
     if not order:
         cur.close()
         conn.close()
         bot.send_message(
             call.message.chat.id, 
-            f"⚠️ Заказ #{order_id} не найден в базе данных (вероятно, база была очищена при перезапуске сервера)."
+            f"⚠️ Заказ #{order_id} не найден в базе данных."
         )
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
@@ -153,7 +154,7 @@ def handle_order_action(call):
                     prod_count = int(match.group(2))
                     cur.execute("UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
         except Exception as e:
-            print(f"Ошибка при списании товаров со склада: {e}")
+            print(f"Ошибка списания со склада: {e}", flush=True)
 
         cur.execute("UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
         conn.commit()
@@ -172,7 +173,7 @@ def handle_order_action(call):
                 reply_markup=None
             )
         except Exception as e:
-            print(f"Ошибка редактирования сообщения (confirm): {e}")
+            print(f"Ошибка редактирования сообщения: {e}", flush=True)
         
         try:
             bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором!", parse_mode="Markdown")
@@ -195,7 +196,7 @@ def handle_order_action(call):
                         prod_count = int(match.group(2))
                         cur.execute("UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
             except Exception as e:
-                print(f"Ошибка при возврате товаров на склад: {e}")
+                print(f"Ошибка возврата на склад: {e}", flush=True)
 
         cur.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
         conn.commit()
@@ -213,7 +214,7 @@ def handle_order_action(call):
                 reply_markup=None
             )
         except Exception as e:
-            print(f"Ошибка редактирования сообщения (cancel): {e}")
+            print(f"Ошибка редактирования сообщения: {e}", flush=True)
         
         try:
             bot.send_message(
@@ -224,7 +225,7 @@ def handle_order_action(call):
                 parse_mode="Markdown"
             )
         except Exception as e:
-            print(f"Не удалось отправить уведомление клиенту: {e}")
+            print(f"Не удалось отправить уведомление клиенту: {e}", flush=True)
 
 # --- ВЕБ-СЕРВЕР FLASK И API ---
 
@@ -317,7 +318,6 @@ def create_order():
     cur.close()
     conn.close()
 
-    # 1. Уведомление для администратора
     admin_message = (
         f"🚨 Новый заказ #{order_id}!\n\n"
         f"👤 Покупатель: @{username} (ID: {user_id})\n\n"
@@ -334,9 +334,8 @@ def create_order():
     try:
         bot.send_message(ADMIN_ID, admin_message, reply_markup=markup)
     except Exception as e:
-        print(f"Ошибка отправки уведомления админу: {e}")
+        print(f"Ошибка отправки уведомления админу: {e}", flush=True)
 
-    # 2. Уведомление для клиента
     client_message = (
         f"🎉 **Ваш заказ успешно оформлен!**\n\n"
         f"🔢 **Номер заказа:** #{order_id}\n\n"
@@ -348,7 +347,7 @@ def create_order():
     try:
         bot.send_message(user_id, client_message, parse_mode="Markdown")
     except Exception as e:
-        print(f"Ошибка отправки уведомления клиенту: {e}")
+        print(f"Ошибка отправки уведомления клиенту: {e}", flush=True)
 
     return jsonify({"status": "success", "message": "Заказ успешно оформлен"})
 
@@ -547,25 +546,27 @@ def delete_product():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def run_flask():
-    port = int(os.environ.get('PORT', 10000))
-    flask_app.run(host='0.0.0.0', port=port)
-
-if __name__ == '__main__':
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
+# --- АВТОМАТИЧЕСКИЙ ЗАПУСК ПОЛЛИНГА С ЗАЩИТОЙ ---
+def start_bot_polling():
+    time.sleep(2) # Задержка перед стартом для предотвращения конфликтов при перезапуске
     try:
         bot.remove_webhook()
-        print("Вебхук успешно сброшен перед запуском polling.")
+        print("Вебхук сброшен.", flush=True)
     except Exception as e:
-        print(f"Ошибка сброса вебхука: {e}")
+        print(f"Ошибка сброса вебхука: {e}", flush=True)
 
-    print("Бот начал опрос Telegram...")
+    print("Запуск опроса Telegram (Polling)...", flush=True)
     while True:
         try:
-            bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+            bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
         except Exception as e:
-            print(f"Ошибка polling: {e}")
+            print(f"Ошибка polling: {e}", flush=True)
             time.sleep(5)
+
+bot_thread = Thread(target=start_bot_polling)
+bot_thread.daemon = True
+bot_thread.start()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    flask_app.run(host='0.0.0.0', port=port)
