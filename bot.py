@@ -242,51 +242,75 @@ def upload_pdf():
                 except ValueError:
                     pass
                 i += 1
-            else:
-                if re.match(r'^\d+$', line) and i + 1 < len(lines):
-                    name_parts = []
-                    i += 1
-                    price_data = None
-                    
-        while i < len(lines):
-            subline = lines[i]
-            price_match = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', subline)
-            if price_match:
-                price_str = price_match.group(1).replace(' ', '').replace(',', '.')
-                qty_str = price_match.group(2)
-                leftover = subline[:price_match.start()].strip()
-                if leftover:
-                    name_parts.append(leftover)
-                
-                final_price = int(float(price_str) + markup_rubles)
-                price_data = (final_price, int(qty_str))
-                
-                i += 1
-                break
-            else:
-                name_parts.append(subline)
-                i += 1
+    added_count = 0
+    lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
 
-    if price_data and name_parts:
-        full_name = " ".join(name_parts)
-        full_name = re.sub(r'^\d+[\s\.\-)]*', '', full_name).strip()
-        full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match_end = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', line)
         
-        price, quantity = price_data
-        if full_name:
-            cur.execute(
-                "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
-                (full_name, price, quantity)
-            )
-            added_count += 1
+        if match_end:
+            price_str = match_end.group(1).replace(' ', '').replace(',', '.')
+            qty_str = match_end.group(2)
+            name = line[:match_end.start()].strip()
+            name = re.sub(r'^\d+[\s\.\-)]*', '', name)
+            
+            try:
+                raw_price = float(price_str)
+                final_price = int(raw_price + markup_rubles)
+                quantity = int(qty_str)
+                
+                if name:
+                    cur.execute(
+                        "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
+                        (name, final_price, quantity)
+                    )
+                    added_count += 1
+            except ValueError:
+                pass
+            
+            i += 1
+        else:
+            name_parts = []
+            price_data = None
+            
+            while i < len(lines):
+                subline = lines[i]
+                price_match = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', subline)
+                if price_match:
+                    price_str = price_match.group(1).replace(' ', '').replace(',', '.')
+                    qty_str = price_match.group(2)
+                    leftover = subline[:price_match.start()].strip()
+                    if leftover:
+                        name_parts.append(leftover)
+                    
+                    final_price = int(float(price_str) + markup_rubles)
+                    price_data = (final_price, int(qty_str))
+                    
+                    i += 1
+                    break
+                else:
+                    name_parts.append(subline)
+                    i += 1
 
+            if price_data and name_parts:
+                full_name = " ".join(name_parts)
+                full_name = re.sub(r'^\d+[\s\.\-)]*', '', full_name).strip()
+                full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
+                
+                price, quantity = price_data
+                if full_name:
+                    cur.execute(
+                        "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
+                        (full_name, price, quantity)
+                    )
+                    added_count += 1
+            i += 1
 
-
-
-
-        conn.commit()
-        cur.close()
-        conn.close()
+    conn.commit()
+    cur.close()
+    conn.close()
 
         return jsonify({"status": "success", "added": added_count})
     except Exception as e:
