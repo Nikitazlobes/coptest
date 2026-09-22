@@ -248,28 +248,24 @@ def upload_pdf():
                     i += 1
                     price_data = None
                     
-            while i < len(lines):
-                subline = lines[i]
-                price_match = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', subline)
-                if price_match:
-                    price_str = price_match.group(1).replace(' ', '').replace(',', '.')
-                    qty_str = price_match.group(2)
-                    leftover = subline[:price_match.start()].strip()
-                    if leftover:
-                        name_parts.append(leftover)
-                    
-                    try:
-                        raw_price = float(price_str)
-                        final_price = int(raw_price + markup_rubles)
-                        price_data = (final_price, int(qty_str))
-                    except ValueError:
-                        pass
-                    
-                    i += 1
-                    break
-                else:
-                    name_parts.append(subline)
-                    i += 1
+        while i < len(lines):
+            subline = lines[i]
+            price_match = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', subline)
+            if price_match:
+                price_str = price_match.group(1).replace(' ', '').replace(',', '.')
+                qty_str = price_match.group(2)
+                leftover = subline[:price_match.start()].strip()
+                if leftover:
+                    name_parts.append(leftover)
+                
+                final_price = int(float(price_str) + markup_rubles)
+                price_data = (final_price, int(qty_str))
+                
+                i += 1
+                break
+            else:
+                name_parts.append(subline)
+                i += 1
 
     if price_data and name_parts:
         full_name = " ".join(name_parts)
@@ -283,6 +279,7 @@ def upload_pdf():
                 (full_name, price, quantity)
             )
             added_count += 1
+
 
 
 
