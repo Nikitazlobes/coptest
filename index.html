@@ -794,15 +794,15 @@
         async function checkout() {
             if (cart.length === 0) return;
 
+            // Группируем товары для бэкенда (ключ cartQuantity)
             const itemsMap = {};
             cart.forEach(item => {
                 if (!itemsMap[item.id]) {
-                    itemsMap[item.id] = { id: item.id, name: item.name, price: item.price, count: 0 };
+                    itemsMap[item.id] = { id: item.id, name: item.name, price: item.price, cartQuantity: 0 };
                 }
-                itemsMap[item.id].count += 1;
+                itemsMap[item.id].cartQuantity += 1;
             });
-            const itemsList = Object.values(itemsMap);
-            const total = cart.reduce((sum, i) => sum + i.price, 0);
+            const cartList = Object.values(itemsMap);
             
             let username = 'Аноним';
             let userId = currentUserId;
@@ -815,7 +815,7 @@
                 const response = await fetch('/api/order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId, username: username, items: itemsList, total: total })
+                    body: JSON.stringify({ user_id: userId, username: username, cart: cartList })
                 });
 
                 if (response.ok) {
