@@ -181,9 +181,15 @@ def handle_order_action(call):
         bot.answer_callback_query(call.id, "Заказ отменен.")
         
         try:
-            bot.send_message(user_id, f"❌ Ваш заказ **#{order_id}** был отменен администратором.")
-        except Exception:
-            pass
+            bot.send_message(
+                user_id, 
+                f"❌ К сожалению, ваш заказ **#{order_id}** был отменен администратором.\n\n"
+                f"📦 **Состав:**\n{items_desc}\n"
+                f"💰 **Сумма:** {total} руб.",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Не удалось отправить уведомление клиенту: {e}")
 
 # --- ВЕБ-СЕРВЕР FLASK И API ---
 
@@ -378,7 +384,6 @@ def upload_pdf():
                 qty_str = match_end.group(2)
                 name = line[:match_end.start()].strip()
                 
-                # Надежная очистка начала строки от цифр и знаков
                 while name and (name[0].isdigit() or name[0] in '.-—) '):
                     name = name[1:]
                 name = name.strip()
