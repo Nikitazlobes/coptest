@@ -82,7 +82,7 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
 
