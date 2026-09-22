@@ -50,7 +50,6 @@ def init_db():
         )
     """)
     
-    # Добавляем колонку status, если её не было в старых версиях таблицы
     try:
         cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new'")
     except sqlite3.OperationalError:
@@ -114,13 +113,11 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_action(call):
-    # Мгновенно убираем часики загрузки с кнопки
     try:
         bot.answer_callback_query(call.id, text="Обработка...")
     except Exception as e:
         print(f"Ошибка answer_callback_query: {e}")
 
-    # Проверка прав администратора
     if call.from_user.id != ADMIN_ID:
         bot.send_message(call.message.chat.id, "❌ У вас нет прав для этого действия.")
         return
@@ -129,7 +126,7 @@ def handle_order_action(call):
         parts = call.data.split('_')
         if len(parts) < 3:
             return
-        action = parts[1]  # confirm или cancel
+        action = parts[1]
         order_id = int(parts[2])
     except Exception as e:
         print(f"Ошибка парсинга callback_data: {e}")
@@ -140,7 +137,6 @@ def handle_order_action(call):
     cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
     order = cur.fetchone()
 
-    # Защита, если база данных была очищена на Render
     if not order:
         cur.close()
         conn.close()
@@ -166,7 +162,6 @@ def handle_order_action(call):
             conn.close()
             return
 
-        # Безопасное списание остатков товаров со склада
         try:
             lines = items_desc.strip().split('\n')
             for line in lines:
@@ -230,7 +225,6 @@ def get_products():
 @flask_app.route('/api/order', methods=['POST'])
 def create_order():
     try:
-        # Универсальный приём данных (даже если заголовки отправлены иначе)
         data = request.get_json(silent=True)
         if not data:
             data = request.form.to_dict()
@@ -241,7 +235,6 @@ def create_order():
         username = data.get('username', 'Неизвестен')
         cart = data.get('cart', [])
         
-        # Если корзина пришла как JSON-строка
         if isinstance(cart, str):
             try:
                 cart = json.loads(cart)
@@ -249,7 +242,7 @@ def create_order():
                 cart = []
 
         if not user_id:
-            user_id = ADMIN_ID  # Резерв для отладки в браузере
+            user_id = ADMIN_ID
 
         if not cart:
             return jsonify({'success': False, 'error': 'Корзина пуста'}), 400
@@ -295,5 +288,14 @@ def create_order():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
+    # Автоматическая привязка вебхука при старте
+    webhook_url = f"{RENDER_URL}/webhook"
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=webhook_url)
+        print(f"Вебхук успешно установлен на: {webhook_url}", flush=True)
+    except Exception as e:
+        print(f"Ошибка при автоустановке вебхука: {e}", flush=True)
+
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
