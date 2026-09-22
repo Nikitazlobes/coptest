@@ -3,10 +3,7 @@ import sqlite3
 import telebot
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import io
 import re
-from pypdf import PdfReader
-import uuid
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAErKWlTfpV5EQPPSPCeZbAPopcfsJd5d-o')
@@ -14,10 +11,7 @@ ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
 
-UPLOAD_FOLDER = 'static/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# ВАЖНО: threaded=False отключает конфликтующие потоки для Webhook
+# Отключаем потоки, чтобы вебхуки работали корректно на сервере
 bot = telebot.TeleBot(TOKEN, parse_mode=None, threaded=False)
 flask_app = Flask(__name__, static_folder='static', static_url_path='/static')
 CORS(flask_app)
@@ -52,11 +46,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
-    try:
-        cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new'")
-    except sqlite3.OperationalError:
-        pass
 
     cur.execute("SELECT COUNT(*) FROM products;")
     count = cur.fetchone()[0]
@@ -74,15 +63,12 @@ init_db()
 
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
-    # Безопасное получение обновлений без жесткой привязки к content-type
     try:
         json_string = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
     except Exception as e:
         print(f"Ошибка webhook: {e}", flush=True)
-    
-    # Всегда возвращаем 200 OK, чтобы Telegram не дублировал нажатия
     return '', 200
 
 @flask_app.route('/set_webhook', methods=['GET'])
@@ -111,29 +97,26 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_action(call):
-    # 1. МГНОВЕННО снимаем часики загрузки с кнопки
+    # 1. Снимаем статус загрузки (часики) с кнопки
     try:
         bot.answer_callback_query(call.id, text="Обработка...")
     except Exception as e:
-        print(f"Answer callback error: {e}", flush=True)
+        print(f"Ошибка answer_callback_query: {e}")
 
-    # 2. Проверка прав администратора
+    # 2. Проверяем, админ ли нажал кнопку
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, text="❌ Отказано в доступе!", show_alert=True)
-        bot.send_message(
-            call.message.chat.id,
-            f"❌ Доступ запрещен. Ваш ID не является админским."
-        )
+        bot.send_message(call.message.chat.id, "❌ У вас нет прав для этого действия.")
         return
 
+    # 3. Разбираем данные кнопки
     try:
         parts = call.data.split('_')
         if len(parts) < 3:
             return
-        action = parts[1]
+        action = parts[1]  # confirm или cancel
         order_id = int(parts[2])
     except Exception as e:
-        print(f"Parsing error: {e}", flush=True)
+        print(f"Ошибка парсинга callback_data: {e}")
         return
 
     conn = get_db_connection()
@@ -141,14 +124,13 @@ def handle_order_action(call):
     cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
     order = cur.fetchone()
 
-    # 3. ЕСЛИ ЗАКАЗ НЕ НАЙДЕН (БД была стерта после деплоя)
+    # Если заказ не найден (база удалилась при перезагрузке Render)
     if not order:
         cur.close()
         conn.close()
-        bot.answer_callback_query(call.id, text="⚠️ Ошибка: Заказ не найден!", show_alert=True)
         bot.send_message(
             call.message.chat.id, 
-            f"⚠️ Заказ #{order_id} не найден в базе. Возможно, он был удален при обновлении сервера (Render)."
+            f"⚠️ Заказ #{order_id} не найден в базе. (Вероятно, база данных обнулилась после обновления кода на сервере)."
         )
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
@@ -168,6 +150,7 @@ def handle_order_action(call):
             conn.close()
             return
 
+        # Списание остатков
         try:
             lines = items_desc.strip().split('\n')
             for line in lines:
@@ -177,33 +160,99 @@ def handle_order_action(call):
                     prod_count = int(match.group(2))
                     cur.execute("UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
         except Exception as e:
-            print(f"Stock error: {e}", flush=True)
+            print(f"Ошибка списания остатков: {e}")
 
         cur.execute("UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
         conn.commit()
-        cur.close()
-        conn.close()
 
         try:
             bot.edit_message_text(
-                f"✅ ЗАКАЗ #{order_id} ПОДТВЕРЖДЕН\n\Проблема с неработающими кнопками «Подтвердить» и «Отменить» (например, при подтверждении добавления товара или оформлении заказа в вашем магазине) чаще всего связана с тем, как вебхук маршрутизирует разные типы входящих данных (Updates) от Telegram. Команда `/start` приходит как объект `message`, а кнопки могут отправлять данные совершенно иначе.
+                f"✅ ЗАКАЗ #{order_id} ПОДТВЕРЖДЕН\n\nПользователь: @{username}\nID: {user_id}\n\nТовары:\n{items_desc}\nИтого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден и передан в сборку!")
+        except Exception as e:
+            print(f"Ошибка редактирования сообщения: {e}")
 
-Вот основные причины и пути решения в зависимости от типа используемых кнопок:
+    elif action == 'cancel':
+        if current_status == 'cancelled':
+            cur.close()
+            conn.close()
+            return
 
-**1. Если это Inline-кнопки (прикреплены под самим сообщением)**
-Такие кнопки отправляют не обычное текстовое сообщение, а объект `callback_query`.
-*   **Парсинг JSON вебхука:** Убедитесь, что скрипт, принимающий вебхук, проверяет наличие ключа `callback_query` во входящем JSON. Если ваш код настроен реагировать только на ключ `message`, нажатия на инлайн-кнопки будут игнорироваться.
-*   **Обработчик (Handler):** В коде должен быть зарегистрирован отдельный хэндлер, который ловит конкретную `callback_data` (например, `callback_data="confirm"` и `callback_data="cancel"`).
-*   **Ответ на Callback:** Телеграм требует обязательно вызывать метод `answerCallbackQuery` после обработки нажатия. Если этого не сделать, на кнопке будет долго висеть иконка загрузки (часики), а затем она может "отвалиться".
+        cur.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        conn.commit()
 
-**2. Если это Reply-кнопки (находятся внизу, вместо клавиатуры телефона)**
-При нажатии они отправляют обычный текст от имени пользователя («Подтвердить» или «Отменить»).
-*   **Текстовый фильтр:** Ваш бот должен перехватывать объект `message` и проверять поле `message.text`.
-*   **Проверка регистра:** Убедитесь, что ожидаемый текст в коде в точности совпадает с текстом на кнопке (включая заглавные буквы и отсутствие случайных пробелов).
+        try:
+            bot.edit_message_text(
+                f"❌ ЗАКАЗ #{order_id} ОТМЕНЕН\n\nПользователь: @{username}\nID: {user_id}\n\nТовары:\n{items_desc}\nИтого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+            bot.send_message(user_id, f"😔 Ваш заказ #{order_id} был отменен администратором.")
+        except Exception as e:
+            print(f"Ошибка редактирования сообщения: {e}")
 
-**План отладки:**
-Временно добавьте логирование (сохранение в файл или вывод в консоль сервера) абсолютно всех входящих JSON-запросов, которые приходят на URL вашего вебхука. Нажмите на неработающую кнопку и посмотрите:
-1. Приходит ли вообще запрос от Telegram на ваш сервер в этот момент.
-2. В каком объекте лежат данные (`message` или `callback_query`).
+    cur.close()
+    conn.close()
 
-Какую библиотеку вы используете для разработки (например, `aiogram`, `pyTelegramBotAPI`, `Telegraf` для Node.js)?
+# --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
+
+@flask_app.route('/api/products', methods=['GET'])
+def get_products():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM products")
+    products = [dict(row) for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify(products)
+
+@flask_app.route('/api/order', methods=['POST'])
+def create_order():
+    data = request.json
+    user_id = data.get('user_id')
+    username = data.get('username', 'Неизвестен')
+    cart = data.get('cart', [])
+    
+    if not user_id or not cart:
+        return jsonify({'error': 'Некорректные данные'}), 400
+        
+    total = 0
+    items_text = ""
+    
+    for item in cart:
+        total += item['price'] * item['cartQuantity']
+        items_text += f"• {item['name']} x {item['cartQuantity']} шт. (по {item['price']} руб.)\n"
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
+        (user_id, username, items_text, total)
+    )
+    order_id = cur.lastrowid
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    markup = telebot.types.InlineKeyboardMarkup()
+    btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
+    btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
+    markup.add(btn_confirm, btn_cancel)
+    
+    admin_text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\nПользователь: @{username} (ID: {user_id})\n\nТовары:\n{items_text}\n💰 Итого: {total} руб."
+    
+    try:
+        bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
+    except Exception as e:
+        print(f"Ошибка отправки админу: {e}")
+        
+    return jsonify({'success': True, 'order_id': order_id})
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    flask_app.run(host='0.0.0.0', port=port)
