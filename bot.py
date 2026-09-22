@@ -5,7 +5,6 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import re
 import json
-import threading
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEtqssUoPKmbntEUEMMjyuv8S_CQ8ecuTY')
@@ -13,8 +12,8 @@ ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
 
-# Создаем бота (без вебхуков)
-bot = telebot.TeleBot(TOKEN, parse_mode=None, threaded=False)
+# Создаем бота
+bot = telebot.TeleBot(TOKEN, parse_mode=None)
 
 flask_app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(flask_app)
@@ -67,6 +66,15 @@ def init_db():
 
 init_db()
 
+# --- АВТОМАТИЧЕСКАЯ УСТАНОВКА ВЕБХУКА ПРИ СТАРТЕ ---
+try:
+    bot.remove_webhook()
+    webhook_url = f"{RENDER_URL}/webhook"
+    bot.set_webhook(url=webhook_url)
+    print(f"Вебхук успешно установлен на: {webhook_url}", flush=True)
+except Exception as e:
+    print(f"Ошибка установки вебхука: {e}", flush=True)
+
 # --- МАРШРУТЫ FLASK ---
 
 @flask_app.route('/')
@@ -77,7 +85,17 @@ def index():
         return send_file(file_path)
     return "Файл index.html не найден", 404
 
-# --- ТЕЛЕГРАМ БОТ (ЛОГИКА ПОЛЛИНГА) ---
+# МАРШРУТ ДЛЯ ПРИЕМА ДАННЫХ ОТ TELEGRAM
+@flask_app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    return 'Forbidden', 403
+
+# --- ЛОГИКА ТЕЛЕГРАМ БОТА ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -264,27 +282,6 @@ def create_order():
         print(f"Критическая ошибка в /api/order: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Функция запуска бота в фоновом потоке
-def run_bot():
-    try:
-        # Очищаем старый вебхук на всякий случай, чтобы polling не конфликтовал
-        bot.remove_webhook()
-        print("Запуск бота в режиме Polling...", flush=True)
-        bot.infinity_polling(skip_pending=True)
-    except Exception as e:
-        print(f"Ошибка в потоке бота: {e}", flush=True)
-
 if __name__ == '__main__':
-    # Сбрасываем вебхук программно перед стартом
-    try:
-        bot.remove_webhook()
-    except Exception:
-        pass
-
-    # Запускаем бота в отдельном потоке, чтобы он не блокировал Flask
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-
-    # Запускаем веб-сервер Flask для Mini App
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
