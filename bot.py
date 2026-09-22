@@ -270,11 +270,10 @@ def upload_pdf():
                             name_parts.append(subline)
                             i += 1
                     
-                                    if price_data and name_parts:
-            full_name = " ".join(name_parts)
-            full_name = re.sub(r'^\d+[\s\.\-)]*', '', full_name).strip()
-            full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
-
+    if price_data and name_parts:
+        full_name = " ".join(name_parts)
+        full_name = re.sub(r'^\d+[\s\.\-)]*', '', full_name).strip()
+        full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
         
         price, quantity = price_data
         if full_name:
@@ -283,6 +282,7 @@ def upload_pdf():
                 (full_name, price, quantity)
             )
             added_count += 1
+
 
 
         conn.commit()
