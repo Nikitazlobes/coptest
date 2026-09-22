@@ -214,34 +214,7 @@ def upload_pdf():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        added_count = 0
-        lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            match_end = re.search(r'([\d\s,]+)\s+(\d+)\s*шт\s+([\d\s,]+)$', line)
-            
-            if match_end:
-                price_str = match_end.group(1).replace(' ', '').replace(',', '.')
-                qty_str = match_end.group(2)
-                name = line[:match_end.start()].strip()
-                name = re.sub(r'^\d+\s+', '', name)
-                
-                try:
-                    raw_price = float(price_str)
-                    final_price = int(raw_price + markup_rubles)
-                    quantity = int(qty_str)
-                    
-                    if name:
-                        cur.execute(
-                            "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
-                            (name, final_price, quantity)
-                        )
-                        added_count += 1
-                except ValueError:
-                    pass
-                i += 1
+
     added_count = 0
     lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
 
