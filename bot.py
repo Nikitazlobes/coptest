@@ -284,7 +284,7 @@ def upload_pdf():
     cur.close()
     conn.close()
 
-        return jsonify({"status": "success", "added": added_count})
+    return jsonify({"status": "success", "added": added_count})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 @flask_app.route('/api/update-product', methods=['POST'])
