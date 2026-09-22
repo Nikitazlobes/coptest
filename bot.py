@@ -82,7 +82,7 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
 
@@ -92,10 +92,18 @@ def handle_order_action(call):
         bot.answer_callback_query(call.id, "Доступ запрещен", show_alert=True)
         return
 
-    # Безопасно разбиваем call.data (например: "order_confirm_1" или "order_cancel_1")
-    parts = call.data.split('_')
-    action = parts[1]        # 'confirm' или 'cancel'
-    order_id = int(parts[2]) # Номер заказа
+    # Сразу убираем крутилку с кнопки
+    bot.answer_callback_query(call.id)
+
+    try:
+        parts = call.data.split('_')
+        if len(parts) < 3:
+            return
+        action = parts[1]        # 'confirm' или 'cancel'
+        order_id = int(parts[2]) # Номер заказа
+    except Exception as e:
+        print(f"Ошибка парсинга callback_data: {e}")
+        return
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -105,7 +113,6 @@ def handle_order_action(call):
     if not order:
         cur.close()
         conn.close()
-        bot.answer_callback_query(call.id, "Заказ не найден.")
         return
 
     current_status = order['status']
@@ -118,7 +125,6 @@ def handle_order_action(call):
         if current_status == 'confirmed':
             cur.close()
             conn.close()
-            bot.answer_callback_query(call.id, "Заказ уже был подтвержден ранее.")
             return
 
         lines = items_desc.strip().split('\n')
@@ -134,20 +140,22 @@ def handle_order_action(call):
         cur.close()
         conn.close()
 
-        bot.edit_message_text(
-            f"✅ **Заказ #{order_id} ПОДТВЕРЖДЕН**\n\n"
-            f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
-            f"📦 **Состав заказа:**\n{items_desc}\n"
-            f"💰 **Итого:** {total} руб.\n\n"
-            f"*(Товары списаны со склада)*",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            parse_mode="Markdown"
-        )
-        bot.answer_callback_query(call.id, "Заказ подтвержден, со склада списаны товары.")
+        try:
+            bot.edit_message_text(
+                f"✅ ЗАКАЗ #{order_id} ПОДТВЕРЖДЕН\n\n"
+                f"👤 Покупатель: @{username} (ID: {user_id})\n\n"
+                f"📦 Состав заказа:\n{items_desc}\n"
+                f"💰 Итого: {total} руб.\n\n"
+                f"(Товары списаны со склада)",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+        except Exception as e:
+            print(f"Ошибка редактирования сообщения (confirm): {e}")
         
         try:
-            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором!")
+            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором!", parse_mode="Markdown")
         except Exception:
             pass
 
@@ -155,7 +163,6 @@ def handle_order_action(call):
         if current_status == 'cancelled':
             cur.close()
             conn.close()
-            bot.answer_callback_query(call.id, "Заказ уже отменен.")
             return
 
         if current_status == 'confirmed':
@@ -172,16 +179,18 @@ def handle_order_action(call):
         cur.close()
         conn.close()
 
-        bot.edit_message_text(
-            f"❌ **Заказ #{order_id} ОТМЕНЕН**\n\n"
-            f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
-            f"📦 **Состав заказа:**\n{items_desc}\n"
-            f"💰 **Итого:** {total} руб.",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            parse_mode="Markdown"
-        )
-        bot.answer_callback_query(call.id, "Заказ отменен.")
+        try:
+            bot.edit_message_text(
+                f"❌ ЗАКАЗ #{order_id} ОТМЕНЕН\n\n"
+                f"👤 Покупатель: @{username} (ID: {user_id})\n\n"
+                f"📦 Состав заказа:\n{items_desc}\n"
+                f"💰 Итого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+        except Exception as e:
+            print(f"Ошибка редактирования сообщения (cancel): {e}")
         
         try:
             bot.send_message(
@@ -287,10 +296,10 @@ def create_order():
 
     # 1. Уведомление для администратора
     admin_message = (
-        f"🚨 **Новый заказ #{order_id}!**\n\n"
-        f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
-        f"📦 **Состав заказа:**\n{items_description}\n"
-        f"💰 **Итого:** {total} руб."
+        f"🚨 Новый заказ #{order_id}!\n\n"
+        f"👤 Покупатель: @{username} (ID: {user_id})\n\n"
+        f"📦 Состав заказа:\n{items_description}\n"
+        f"💰 Итого: {total} руб."
     )
     
     markup = telebot.types.InlineKeyboardMarkup()
@@ -300,7 +309,7 @@ def create_order():
     )
 
     try:
-        bot.send_message(ADMIN_ID, admin_message, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(ADMIN_ID, admin_message, reply_markup=markup)
     except Exception as e:
         print(f"Ошибка отправки уведомления админу: {e}")
 
