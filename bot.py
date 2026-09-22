@@ -371,7 +371,7 @@ def upload_pdf():
         i = 0
         while i < len(lines):
             line = lines[i]
-            match_end = re.search(r'([\d\s,\.]+)\s*(\d+)\s*шт\s*\(?([\d\s,\.]+)?', line)                          if match_end:                 price_str = match_end.group(1).replace(' ', '').replace(',', '.')                 qty_str = match_end.group(2)                 name = line[:match_end.start()].strip()                 # Удаляем порядковые номера и лишние символы в начале названия (например: "1.", "1 -", "1)")                 name = re.sub(r'^\d+[\s\.\-\)]+', '', name).strip()
+            match_end = re.search(r'([\d\s,\.]+)\s*(\d+)\s*шт\s*\(?([\d\s,\.]+)?', line)                          if match_end:                 price_str = match_end.group(1).replace(' ', '').replace(',', '.')                 qty_str = match_end.group(2)                 name = line[:match_end.start()].strip()                 name = re.sub(r'^\d+[\s\.\-\)]+', '', name).strip()
                 
                 try:
                     final_price = int(float(price_str) + markup_rubles)
@@ -392,7 +392,7 @@ def upload_pdf():
                 
                 while i < len(lines):
                     subline = lines[i]
-                    price_match = re.search(r'([\d\s,\.]+)\s*(\d+)\s*шт\s*\(?([\d\s,\.]+)?', subline)                     if price_match:                         price_str = price_match.group(1).replace(' ', '').replace(',', '.')                         qty_str = price_match.group(2)                         leftover = subline[:price_match.start()].strip()                         if leftover:                             name_parts.append(leftover)                                                  final_price = int(float(price_str) + markup_rubles)                         price_data = (final_price, int(qty_str))                         i += 1                         break                     else:                         name_parts.append(subline)                         i += 1                  if price_data and name_parts:                     full_name = " ".join(name_parts)                     # Очищаем название от порядковых номеров и служебных символов в начале                     full_name = re.sub(r'^\d+[\s\.\-\)]+', '', full_name).strip()
+                    price_match = re.search(r'([\d\s,\.]+)\s*(\d+)\s*шт\s*\(?([\d\s,\.]+)?', subline)                     if price_match:                         price_str = price_match.group(1).replace(' ', '').replace(',', '.')                         qty_str = price_match.group(2)                         leftover = subline[:price_match.start()].strip()                         if leftover:                             name_parts.append(leftover)                                                  final_price = int(float(price_str) + markup_rubles)                         price_data = (final_price, int(qty_str))                         i += 1                         break                     else:                         name_parts.append(subline)                         i += 1                  if price_data and name_parts:                     full_name = " ".join(name_parts)                     full_name = re.sub(r'^\d+[\s\.\-\)]+', '', full_name).strip()
                     full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
                     
                     price, quantity = price_data
