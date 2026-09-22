@@ -826,7 +826,8 @@
                     fetchProducts();
                     switchTab('home', document.querySelectorAll('.nav-item')[0]);
                 } else {
-                    const errText = await response.text();
+                    const errJson = await response.json().catch(() => ({}));
+                    const errText = errJson.error || await response.text();
                     const msg = 'Ошибка сервера (' + response.status + '): ' + errText;
                     if (tg) { tg.showAlert(msg); } else { alert(msg); }
                 }
