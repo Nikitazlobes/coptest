@@ -7,10 +7,10 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root {
-            --bg-color: #0b0f19;
-            --card-bg: #151c2c;
-            --card-border: #232d42;
-            --accent-color: #6366f1;
+            --bg-color: #080c14;
+            --card-bg: rgba(21, 28, 44, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
             --accent-hover: #4f46e5;
             --text-primary: #f3f4f6;
             --text-secondary: #9ca3af;
@@ -29,102 +29,197 @@
         body {
             background-color: var(--bg-color);
             color: var(--text-primary);
-            padding-bottom: 80px;
+            padding-bottom: 90px;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 40%);
+            background-attachment: fixed;
         }
 
-        header {
-            padding: 16px;
-            background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, rgba(11, 15, 25, 0) 100%);
-            border-bottom: 1px solid var(--card-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        /* Анимации */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .brand-title {
-            font-size: 20px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
+            50% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.4); }
+            100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
         }
 
         .tab-content {
             display: none;
             padding: 16px;
+            animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .tab-content.active {
             display: block;
         }
 
+        /* Шапка приветствия */
+        .welcome-header {
+            padding: 20px 16px 10px 16px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .welcome-title {
+            font-size: 22px;
+            font-weight: 800;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 4px;
+        }
+
+        .welcome-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Карточки-баннеры */
+        .banner-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 18px;
+            margin-top: 14px;
+            margin-bottom: 14px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .banner-card:active {
+            transform: scale(0.98);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 14px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Каталог товаров */
         .product-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
             gap: 12px;
         }
 
         .product-card {
-            background-color: var(--card-bg);
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--card-border);
-            border-radius: 12px;
+            border-radius: 16px;
             padding: 12px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .product-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
         }
 
         .product-img {
             width: 100%;
-            height: 120px;
+            height: 125px;
             object-fit: cover;
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 8px;
             background: #0b0f19;
         }
 
         .product-title {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             margin-bottom: 6px;
             color: var(--text-primary);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .product-price {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
             color: #a5b4fc;
             margin-bottom: 10px;
         }
 
+        /* Кнопки */
         .btn {
-            background-color: var(--accent-color);
+            background: var(--accent-gradient);
             color: #ffffff;
             border: none;
-            border-radius: 8px;
-            padding: 8px 12px;
+            border-radius: 14px;
+            padding: 10px 14px;
             font-weight: 600;
+            font-size: 14px;
             cursor: pointer;
             width: 100%;
-            transition: background-color 0.2s;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
         }
 
         .btn:active {
-            background-color: var(--accent-hover);
+            transform: scale(0.96);
+            opacity: 0.9;
         }
 
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: none;
+            border: 1px solid var(--card-border);
+        }
+
+        /* Нижняя навигация */
         .bottom-nav {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            height: 65px;
-            background-color: #0f172a;
+            height: 72px;
+            background: rgba(11, 15, 25, 0.85);
+            backdrop-filter: blur(20px);
             border-top: 1px solid var(--card-border);
             display: flex;
             justify-content: space-around;
             align-items: center;
             z-index: 1000;
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         .nav-item {
@@ -132,37 +227,47 @@
             flex-direction: column;
             align-items: center;
             color: var(--text-secondary);
-            font-size: 11px;
+            font-size: 10px;
+            font-weight: 500;
             text-decoration: none;
             cursor: pointer;
+            transition: color 0.2s, transform 0.2s;
+            flex: 1;
         }
 
         .nav-item.active {
-            color: var(--accent-color);
+            color: #818cf8;
+        }
+
+        .nav-item.active .nav-icon-wrapper {
+            background: rgba(99, 102, 241, 0.15);
+            transform: translateY(-3px);
+        }
+
+        .nav-icon-wrapper {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 3px;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .nav-icon {
-            font-size: 20px;
-            margin-bottom: 2px;
+            font-size: 18px;
         }
 
-        .cart-item {
-            background-color: var(--card-bg);
+        /* Корзина и Админка карточки */
+        .cart-item, .admin-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--card-border);
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .admin-card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 12px;
+            animation: fadeIn 0.3s ease;
         }
 
         .form-group {
@@ -171,102 +276,145 @@
 
         .form-group label {
             display: block;
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
-            margin-bottom: 4px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
         }
 
         .form-group input {
             width: 100%;
-            background: #0b0f19;
+            background: rgba(8, 12, 20, 0.6);
             border: 1px solid var(--card-border);
             color: white;
-            padding: 10px;
-            border-radius: 8px;
+            padding: 12px;
+            border-radius: 12px;
             font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            border-color: #6366f1;
         }
 
         .badge {
             background: rgba(99, 102, 241, 0.2);
             color: #818cf8;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
 
-    <header>
-        <div class="brand-title">C-opt EST Shop</div>
-        <span class="badge" id="user-role">Клиент</span>
-    </header>
+    <!-- Главная вкладка -->
+    <div id="tab-home" class="tab-content active">
+        <div class="welcome-header">
+            <div class="welcome-title" id="welcome-msg">Привет, гость!</div>
+            <div class="welcome-subtitle">Оптовый склад · Быстрое оформление</div>
+        </div>
 
-    <div id="tab-catalog" class="tab-content active">
-        <h2 style="font-size: 18px; margin-bottom: 14px;">Каталог товаров</h2>
+        <div style="padding: 0 16px;">
+            <div class="banner-card" style="animation: pulseGlow 4s infinite;">
+                <div style="font-weight: 700; font-size: 16px; margin-bottom: 6px;">📢 Присоединяйся в канал</div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Следи за новостями, новыми поставками и акциями C-opt EST</div>
+                <button class="btn" style="width: auto; padding: 8px 16px;" onclick="window.Telegram.WebApp.openTelegramLink('https://t.me/')">Открыть канал</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Заказов</div>
+                    <div class="stat-value" id="home-orders-count">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Покупок на</div>
+                    <div class="stat-value" id="home-total-spent">0 ₽</div>
+                </div>
+            </div>
+
+            <button class="btn" style="padding: 14px; font-size: 15px;" onclick="switchTab('catalog', document.querySelectorAll('.nav-item')[1])">Открыть каталог</button>
+        </div>
+    </div>
+
+    <!-- Каталог -->
+    <div id="tab-catalog" class="tab-content">
+        <div style="padding: 4px 4px 14px 4px; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="font-size: 18px; font-weight: 700;">Каталог товаров</h2>
+            <span class="badge" id="user-role">Клиент</span>
+        </div>
         <div class="product-grid" id="product-list">
             <p style="color: var(--text-secondary);">Загрузка товаров...</p>
         </div>
     </div>
 
+    <!-- Корзина -->
     <div id="tab-cart" class="tab-content">
-        <h2 style="font-size: 18px; margin-bottom: 14px;">Ваша корзина</h2>
+        <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 14px;">Ваша корзина</h2>
         <div id="cart-list">
             <p style="color: var(--text-secondary);">Корзина пуста</p>
         </div>
         <div id="cart-summary" style="margin-top: 20px; display: none;">
-            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; margin-bottom: 14px; background: var(--card-bg); padding: 16px; border-radius: 16px; border: 1px solid var(--card-border);">
                 <span>Итого:</span>
-                <span id="cart-total">0 ₽</span>
+                <span id="cart-total" style="color: #a5b4fc;">0 ₽</span>
             </div>
             <button class="btn" style="padding: 14px; font-size: 16px;" onclick="checkout()">Оформить заказ</button>
         </div>
     </div>
 
+    <!-- Админка -->
     <div id="tab-admin" class="tab-content">
-        <h2 style="font-size: 18px; margin-bottom: 14px;">Панель управления</h2>
+        <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 14px;">Панель управления</h2>
         <div class="admin-card">
-            <h3 style="font-size: 15px; margin-bottom: 10px;">Добавить товар в базу</h3>
+            <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">➕ Добавить товар</h3>
             <div class="form-group">
                 <label>Название товара</label>
-                <input type="text" id="add-name" placeholder="Пример: Электронная сигарета V8">
+                <input type="text" id="add-name" placeholder="Пример: Товар оптом">
             </div>
             <div class="form-group">
                 <label>Цена (руб)</label>
                 <input type="number" id="add-price" placeholder="1500">
             </div>
             <div class="form-group">
-                <label>Фотография товара (JPG/PNG)</label>
+                <label>Фотография (JPG/PNG)</label>
                 <input type="file" id="add-image-file" accept="image/*" style="padding: 6px;">
             </div>
             <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
         </div>
 
         <div class="admin-card">
-            <h3 style="font-size: 15px; margin-bottom: 10px;">Загрузить товары из PDF</h3>
+            <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">📄 Загрузить из PDF</h3>
             <div class="form-group">
-                <label>Выберите PDF-файл с прайсом</label>
+                <label>PDF-файл с прайсом</label>
                 <input type="file" id="pdf-file" accept=".pdf" style="padding: 6px;">
             </div>
             <div class="form-group">
-                <label>Наценка в рублях (+₽ к каждой позиции)</label>
+                <label>Наценка (+₽)</label>
                 <input type="number" id="markup-rubles" value="150" placeholder="150">
             </div>
-            <button class="btn" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить из PDF</button>
+            <button class="btn btn-secondary" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить прайс</button>
         </div>
     </div>
 
+    <!-- Нижняя навигация -->
     <nav class="bottom-nav">
-        <div class="nav-item active" onclick="switchTab('catalog', this)">
-            <span class="nav-icon">🛍️</span>
+        <div class="nav-item active" onclick="switchTab('home', this)">
+            <div class="nav-icon-wrapper"><span class="nav-icon">🏠</span></div>
+            <span>Главная</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('catalog', this)">
+            <div class="nav-icon-wrapper"><span class="nav-icon">🛍️</span></div>
             <span>Каталог</span>
         </div>
         <div class="nav-item" onclick="switchTab('cart', this)">
-            <span class="nav-icon">🛒</span>
-            <span>Корзина (<span id="cart-count">0</span>)</span>
+            <div class="nav-icon-wrapper"><span class="nav-icon">🛒</span></div>
+            <span>Корзина</span>
         </div>
-        <div class="nav-item" onclick="switchTab('admin', this)">
-            <span class="nav-icon">⚙️</span>
+        <div class="nav-item" id="nav-admin" onclick="switchTab('admin', this)" style="display: none;">
+            <div class="nav-icon-wrapper"><span class="nav-icon">⚙️</span></div>
             <span>Админка</span>
         </div>
     </nav>
@@ -283,19 +431,18 @@
             tg.ready();
             if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
                 currentUserId = tg.initDataUnsafe.user.id;
+                const firstName = tg.initDataUnsafe.user.first_name || 'друг';
+                document.getElementById('welcome-msg').innerText = `Привет, ${firstName}!`;
             }
         }
 
         if (!currentUserId) {
             currentUserId = ADMIN_ID;
+            document.getElementById('welcome-msg').innerText = `Привет, администратор!`;
         }
 
-        if (currentUserId !== ADMIN_ID) {
-            const adminNavButton = document.querySelectorAll('.nav-item')[2];
-            if (adminNavButton) adminNavButton.style.display = 'none';
-            const adminTab = document.getElementById('tab-admin');
-            if (adminTab) adminTab.remove();
-        } else {
+        if (currentUserId === ADMIN_ID) {
+            document.getElementById('nav-admin').style.display = 'flex';
             const roleBadge = document.getElementById('user-role');
             if(roleBadge) {
                 roleBadge.innerText = 'Администратор';
@@ -313,19 +460,10 @@
             formData.append('user_id', currentUserId);
 
             try {
-                const response = await fetch('/api/upload-image', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('/api/upload-image', { method: 'POST', body: formData });
                 const result = await response.json();
-                if (response.ok) {
-                    return result.image_url;
-                } else {
-                    alert('Ошибка загрузки фото: ' + result.error);
-                    return '';
-                }
+                return response.ok ? result.image_url : '';
             } catch (e) {
-                alert('Ошибка сети при загрузке фото');
                 return '';
             }
         }
@@ -336,7 +474,7 @@
                 products = await response.json();
                 renderProducts();
             } catch (error) {
-                document.getElementById('product-list').innerHTML = '<p style="color: red;">Ошибка связи с сервером базы данных.</p>';
+                document.getElementById('product-list').innerHTML = '<p style="color: red;">Ошибка связи с сервером.</p>';
             }
         }
 
@@ -353,9 +491,9 @@
                     const safeName = (p.name || '').replace(/'/g, "\\'");
                     const safeImage = (p.image_url || '').replace(/'/g, "\\'");
                     adminButtons = `
-                        <div style="display: flex; gap: 5px; margin-top: 8px;">
-                            <button class="btn" style="background: #e67e22;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0}, '${safeImage}')">Изменить</button>
-                            <button class="btn" style="background: var(--danger-color);" onclick="deleteProduct(${p.id})">Удалить</button>
+                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                            <button class="btn btn-secondary" style="padding: 6px; font-size: 12px;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0}, '${safeImage}')">Изменить</button>
+                            <button class="btn btn-secondary" style="padding: 6px; font-size: 12px; color: var(--danger-color);" onclick="deleteProduct(${p.id})">Удалить</button>
                         </div>
                     `;
                 }
@@ -368,10 +506,10 @@
                             ${imgHtml}
                             <div class="product-title">${p.name}</div>
                             <div class="product-price">${p.price} ₽</div>
-                            <div style="font-size: 12px; color: gray;">Остаток: ${p.quantity || 0} шт.</div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">Остаток: ${p.quantity || 0} шт.</div>
                         </div>
-                        <div>
-                            <button class="btn" onclick="addToCart(${p.id})">В корзину</button>
+                        <div style="margin-top: 10px;">
+                            <button class="btn" style="padding: 8px; font-size: 13px;" onclick="addToCart(${p.id})">В корзину</button>
                             ${adminButtons}
                         </div>
                     </div>
@@ -407,14 +545,10 @@
                     document.getElementById('add-name').value = '';
                     document.getElementById('add-price').value = '';
                     document.getElementById('add-image-file').value = '';
-                    if (tg) { tg.showAlert('Товар успешно сохранен в базе!'); } else { alert('Товар успешно сохранен в базе!'); }
-                    switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
-                } else {
-                    if (tg) { tg.showAlert('Доступ запрещен.'); }
+                    if (tg) { tg.showAlert('Товар успешно сохранен!'); } else { alert('Товар успешно сохранен!'); }
+                    switchTab('catalog', document.querySelectorAll('.nav-item')[1]);
                 }
-            } catch (e) {
-                if (tg) tg.showAlert('Ошибка сети.');
-            }
+            } catch (e) {}
             btn.innerText = 'Сохранить в базу';
         }
 
@@ -428,7 +562,6 @@
         }
 
         function updateCart() {
-            document.getElementById('cart-count').innerText = cart.length;
             const list = document.getElementById('cart-list');
             const summary = document.getElementById('cart-summary');
             
@@ -443,12 +576,12 @@
             cart.forEach((item, index) => {
                 total += item.price;
                 list.innerHTML += `
-                    <div class="cart-item">
+                    <div class="cart-item" style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-weight: 600;">${item.name}</div>
-                            <div style="color: #a5b4fc; font-size: 14px;">${item.price} ₽</div>
+                            <div style="font-weight: 600; font-size: 14px;">${item.name}</div>
+                            <div style="color: #a5b4fc; font-size: 13px; margin-top: 2px;">${item.price} ₽</div>
                         </div>
-                        <button style="background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 18px;" onclick="removeFromCart(${index})">✕</button>
+                        <button style="background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 16px; padding: 6px;" onclick="removeFromCart(${index})">✕</button>
                     </div>
                 `;
             });
@@ -482,37 +615,20 @@
                 userId = tg.initDataUnsafe.user.id;
             }
 
-            const orderData = {
-                user_id: userId,
-                username: username,
-                items: itemsList,
-                total: total
-            };
-
             try {
                 const response = await fetch('/api/order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(orderData)
+                    body: JSON.stringify({ user_id: userId, username: username, items: itemsList, total: total })
                 });
 
                 if (response.ok) {
-                    if (tg) {
-                        tg.showAlert('Заказ успешно оформлен!');
-                        cart = [];
-                        updateCart();
-                        switchTab('catalog', document.querySelectorAll('.nav-item')[0]);
-                    } else {
-                        alert('Заказ успешно оформлен!');
-                        cart = [];
-                        updateCart();
-                    }
-                } else {
-                    if (tg) { tg.showAlert('Ошибка при оформлении заказа.'); }
+                    if (tg) { tg.showAlert('Заказ успешно оформлен!'); } else { alert('Заказ успешно оформлен!'); }
+                    cart = [];
+                    updateCart();
+                    switchTab('home', document.querySelectorAll('.nav-item')[0]);
                 }
-            } catch (error) {
-                if (tg) { tg.showAlert('Ошибка сети.'); }
-            }
+            } catch (error) {}
         }
 
         function switchTab(tabId, el) {
@@ -520,6 +636,7 @@
             document.querySelectorAll('.nav-item').forEach(ni => ni.classList.remove('active'));
             document.getElementById('tab-' + tabId).classList.add('active');
             if (el) el.classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         async function uploadPdfCatalog() {
@@ -538,148 +655,19 @@
             formData.append('markup_rubles', markupInput.value || 0);
 
             btn.innerText = 'Загрузка...';
-
             try {
-                const response = await fetch('/api/upload-pdf', {
-                    method: 'POST',
-                    body: formData
-                });
-
+                const response = await fetch('/api/upload-pdf', { method: 'POST', body: formData });
                 const result = await response.json();
                 if (response.ok) {
-                    alert(`Успешно добавлено товаров из PDF: ${result.added}`);
+                    alert(`Успешно добавлено товаров: ${result.added}`);
                     fileInput.value = '';
                     fetchProducts();
-                } else {
-                    alert('Ошибка: ' + (result.error || 'Не удалось обработать файл'));
                 }
-            } catch (e) {
-                alert('Ошибка сети при загрузке файла');
-            }
-            btn.innerText = 'Загрузить из PDF';
-        }
-
-        function openEditModal(id, name, price, quantity, imageUrl) {
-            document.getElementById('edit-id').value = id;
-            document.getElementById('edit-name').value = name;
-            document.getElementById('edit-price').value = price;
-            document.getElementById('edit-quantity').value = quantity;
-            document.getElementById('edit-image-url').value = imageUrl || '';
-            document.getElementById('edit-image-file').value = '';
-            document.getElementById('edit-modal').style.display = 'flex';
-        }
-
-        function closeEditModal() {
-            document.getElementById('edit-modal').style.display = 'none';
-        }
-
-        async function saveProductChanges() {
-            const id = document.getElementById('edit-id').value;
-            const name = document.getElementById('edit-name').value;
-            const price = parseFloat(document.getElementById('edit-price').value);
-            const quantity = parseInt(document.getElementById('edit-quantity').value);
-            let imageUrl = document.getElementById('edit-image-url').value;
-
-            if (!name || isNaN(price) || isNaN(quantity)) {
-                alert('Заполните все поля корректно!');
-                return;
-            }
-
-            const fileInput = document.getElementById('edit-image-file');
-            if (fileInput.files && fileInput.files.length > 0) {
-                const newUrl = await uploadImageFile('edit-image-file');
-                if (newUrl) {
-                    imageUrl = newUrl;
-                }
-            }
-
-            try {
-                const response = await fetch('/api/update-product', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        user_id: currentUserId,
-                        id: id,
-                        name: name,
-                        price: price,
-                        quantity: quantity,
-                        image_url: imageUrl
-                    })
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    alert('Товар успешно обновлен!');
-                    closeEditModal();
-                    fetchProducts();
-                } else {
-                    alert('Ошибка: ' + (result.error || 'Не удалось обновить товар'));
-                }
-            } catch (e) {
-                alert('Ошибка сети при сохранении товара');
-            }
-        }
-
-        async function deleteProduct(id) {
-            if (!confirm('Вы уверены, что хотите удалить этот товар?')) return;
-
-            try {
-                const response = await fetch('/api/delete-product', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        user_id: currentUserId,
-                        id: id
-                    })
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    alert('Товар успешно удален!');
-                    fetchProducts();
-                } else {
-                    alert('Ошибка: ' + (result.error || 'Не удалось удалить товар'));
-                }
-            } catch (e) {
-                alert('Ошибка сети при удалении товар');
-            }
+            } catch (e) {}
+            btn.innerText = 'Загрузить прайс';
         }
 
         fetchProducts();
     </script>
-
-    <!-- Модальное окно редактирования -->
-    <div id="edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
-        <div style="background: var(--card-bg); border: 1px solid var(--card-border); color: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
-            <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">Редактировать товар</h3>
-            <input type="hidden" id="edit-id">
-            <input type="hidden" id="edit-image-url">
-            
-            <div class="form-group">
-                <label>Название</label>
-                <input type="text" id="edit-name">
-            </div>
-            
-            <div class="form-group">
-                <label>Цена (₽)</label>
-                <input type="number" id="edit-price">
-            </div>
-            
-            <div class="form-group">
-                <label>Количество (шт)</label>
-                <input type="number" id="edit-quantity">
-            </div>
-
-            <div class="form-group">
-                <label>Заменить фотографию (JPG/PNG)</label>
-                <input type="file" id="edit-image-file" accept="image/*" style="padding: 6px;">
-            </div>
-            
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button class="btn" style="flex: 1; background: var(--success-color);" onclick="saveProductChanges()">Сохранить</button>
-                <button class="btn" style="flex: 1; background: var(--danger-color);" onclick="closeEditModal()">Отмена</button>
-            </div>
-        </div>
-    </div>
 </body>
 </html>
