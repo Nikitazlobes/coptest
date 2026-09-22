@@ -11,11 +11,11 @@ ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
 
-# Отключаем потоки, чтобы вебхуки работали корректно на сервере
+# Отключаем потоки для стабильной работы вебхуков
 bot = telebot.TeleBot(TOKEN, parse_mode=None, threaded=False)
 
-# Настраиваем Flask так, чтобы он видел файлы сайта в папке static
-flask_app = Flask(__name__, static_folder='static', static_url_path='/static')
+# Указываем корень проекта для статических файлов
+flask_app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(flask_app)
 
 def get_db_connection():
@@ -65,10 +65,11 @@ init_db()
 
 @flask_app.route('/')
 def index():
-    # Отдает главную страницу мини-приложения из папки static
-    if os.path.exists('static/index.html'):
-        return send_file('static/index.html')
-    return "Магазин работает! Файл index.html не найден в папке static.", 200
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, 'index.html')
+    if os.path.exists(file_path):
+        return send_file(file_path)
+    return "Файл index.html не найден в корне проекта!", 404
 
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
@@ -106,13 +107,11 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_action(call):
-    # Снимаем статус загрузки (часики) с кнопки
     try:
         bot.answer_callback_query(call.id, text="Обработка...")
     except Exception as e:
         print(f"Ошибка answer_callback_query: {e}")
 
-    # Проверяем, админ ли нажал кнопку
     if call.from_user.id != ADMIN_ID:
         bot.send_message(call.message.chat.id, "❌ У вас нет прав для этого действия.")
         return
@@ -121,7 +120,7 @@ def handle_order_action(call):
         parts = call.data.split('_')
         if len(parts) < 3:
             return
-        action = parts[1]  # confirm или cancel
+        action = parts[1]
         order_id = int(parts[2])
     except Exception as e:
         print(f"Ошибка парсинга callback_data: {e}")
@@ -137,7 +136,7 @@ def handle_order_action(call):
         conn.close()
         bot.send_message(
             call.message.chat.id, 
-            f"⚠️ Заказ #{order_id} не найден в базе (возможно, база обнулилась при перезагрузке Render)."
+            f"⚠️ Заказ #{order_id} не найден в базе."
         )
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
