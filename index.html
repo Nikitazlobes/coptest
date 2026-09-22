@@ -86,11 +86,6 @@
             margin-top: 14px;
             margin-bottom: 14px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            transition: transform 0.2s ease, border-color 0.2s ease;
-        }
-
-        .banner-card:active {
-            transform: scale(0.98);
         }
 
         .stats-grid {
@@ -106,7 +101,6 @@
             border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 14px;
-            animation: fadeIn 0.5s ease;
         }
 
         .stat-label {
@@ -139,7 +133,6 @@
             flex-direction: column;
             justify-content: space-between;
             transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
-            animation: fadeIn 0.4s ease;
         }
 
         .product-img {
@@ -254,7 +247,6 @@
             border-radius: 16px;
             padding: 14px;
             margin-bottom: 12px;
-            animation: fadeIn 0.3s ease;
         }
 
         .form-group {
@@ -292,6 +284,28 @@
             border-radius: 8px;
             font-size: 11px;
             font-weight: 600;
+        }
+
+        /* Модальное окно редактирования */
+        #edit-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+        .modal-content {
+            background: #111827;
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 20px;
+            width: 100%;
+            max-width: 400px;
+            animation: fadeIn 0.3s ease;
         }
     </style>
 </head>
@@ -366,6 +380,10 @@
                 <input type="number" id="add-price" placeholder="1500">
             </div>
             <div class="form-group">
+                <label>Количество (шт)</label>
+                <input type="number" id="add-quantity" value="10" placeholder="10">
+            </div>
+            <div class="form-group">
                 <label>Фотография (JPG/PNG)</label>
                 <input type="file" id="add-image-file" accept="image/*" style="padding: 6px;">
             </div>
@@ -383,6 +401,35 @@
                 <input type="number" id="markup-rubles" value="150" placeholder="150">
             </div>
             <button class="btn btn-secondary" onclick="uploadPdfCatalog()" id="pdf-btn">Загрузить прайс</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования товара -->
+    <div id="edit-modal">
+        <div class="modal-content">
+            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #a5b4fc;">✏️ Редактировать товар</h3>
+            <input type="hidden" id="edit-id">
+            <input type="hidden" id="edit-old-image">
+            <div class="form-group">
+                <label>Название</label>
+                <input type="text" id="edit-name">
+            </div>
+            <div class="form-group">
+                <label>Цена (₽)</label>
+                <input type="number" id="edit-price">
+            </div>
+            <div class="form-group">
+                <label>Количество (шт)</label>
+                <input type="number" id="edit-quantity">
+            </div>
+            <div class="form-group">
+                <label>Новое фото (необязательно)</label>
+                <input type="file" id="edit-image-file" accept="image/*" style="padding: 6px;">
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Отмена</button>
+                <button class="btn" onclick="saveEditedProduct()">Сохранить</button>
+            </div>
         </div>
     </div>
 
@@ -438,7 +485,6 @@
             }
         }
 
-        // Загрузка статистики пользователя (заказы и сумма)
         async function fetchUserStats() {
             try {
                 const response = await fetch(`/api/user-stats?user_id=${currentUserId}`);
@@ -447,9 +493,7 @@
                     document.getElementById('home-orders-count').innerText = data.orders_count || 0;
                     document.getElementById('home-total-spent').innerText = (data.total_spent || 0) + ' ₽';
                 }
-            } catch (e) {
-                console.error("Не удалось загрузить статистику", e);
-            }
+            } catch (e) {}
         }
 
         async function uploadImageFile(fileInputId) {
@@ -521,6 +565,7 @@
         async function addNewProduct() {
             const name = document.getElementById('add-name').value;
             const price = parseFloat(document.getElementById('add-price').value);
+            const quantity = parseInt(document.getElementById('add-quantity').value) || 0;
             const btn = document.getElementById('add-btn');
             
             if (!name || isNaN(price)) {
@@ -532,7 +577,7 @@
             let imageUrl = await uploadImageFile('add-image-file');
 
             btn.innerText = 'Сохранение...';
-            const newProd = { id: Date.now(), name: name, price: price, quantity: 0, image_url: imageUrl, user_id: currentUserId };
+            const newProd = { name: name, price: price, quantity: quantity, image_url: imageUrl, user_id: currentUserId };
             
             try {
                 const response = await fetch('/api/products', {
@@ -545,12 +590,75 @@
                     fetchProducts();
                     document.getElementById('add-name').value = '';
                     document.getElementById('add-price').value = '';
+                    document.getElementById('add-quantity').value = '10';
                     document.getElementById('add-image-file').value = '';
                     if (tg) { tg.showAlert('Товар успешно сохранен!'); } else { alert('Товар успешно сохранен!'); }
                     switchTab('catalog', document.querySelectorAll('.nav-item')[1]);
                 }
             } catch (e) {}
             btn.innerText = 'Сохранить в базу';
+        }
+
+        function openEditModal(id, name, price, quantity, imageUrl) {
+            document.getElementById('edit-id').value = id;
+            document.getElementById('edit-name').value = name;
+            document.getElementById('edit-price').value = price;
+            document.getElementById('edit-quantity').value = quantity;
+            document.getElementById('edit-old-image').value = imageUrl;
+            document.getElementById('edit-image-file').value = '';
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+
+        async function saveEditedProduct() {
+            const id = document.getElementById('edit-id').value;
+            const name = document.getElementById('edit-name').value;
+            const price = parseFloat(document.getElementById('edit-price').value);
+            const quantity = parseInt(document.getElementById('edit-quantity').value) || 0;
+            let imageUrl = document.getElementById('edit-old-image').value;
+
+            if (!name || isNaN(price)) {
+                alert('Заполните название и цену!');
+                return;
+            }
+
+            const newImage = await uploadImageFile('edit-image-file');
+            if (newImage) {
+                imageUrl = newImage;
+            }
+
+            try {
+                const response = await fetch('/api/update-product', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id, name: name, price: price, quantity: quantity, image_url: imageUrl, user_id: currentUserId })
+                });
+
+                if (response.ok) {
+                    closeEditModal();
+                    fetchProducts();
+                    if (tg) tg.showAlert('Товар изменен!');
+                }
+            } catch (e) {
+                alert('Ошибка при изменении товара');
+            }
+        }
+
+        async function deleteProduct(id) {
+            if (!confirm('Точно удалить этот товар?')) return;
+            try {
+                const response = await fetch('/api/delete-product', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id, user_id: currentUserId })
+                });
+                if (response.ok) {
+                    fetchProducts();
+                }
+            } catch (e) {}
         }
 
         function addToCart(id) {
@@ -627,7 +735,8 @@
                     if (tg) { tg.showAlert('Заказ успешно оформлен!'); } else { alert('Заказ успешно оформлен!'); }
                     cart = [];
                     updateCart();
-                    fetchUserStats(); // Сразу обновляем статистику заказов на главной
+                    fetchUserStats();
+                    fetchProducts();
                     switchTab('home', document.querySelectorAll('.nav-item')[0]);
                 }
             } catch (error) {}
@@ -669,7 +778,6 @@
             btn.innerText = 'Загрузить прайс';
         }
 
-        // Инициализация при загрузке страницы
         fetchProducts();
         fetchUserStats();
     </script>
