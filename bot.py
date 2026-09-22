@@ -144,7 +144,7 @@ def handle_order_action(call):
         bot.answer_callback_query(call.id, "Заказ подтвержден, со склада списаны товары.")
         
         try:
-            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором!")
+            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором !")
         except Exception:
             pass
 
