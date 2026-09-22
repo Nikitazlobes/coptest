@@ -244,6 +244,63 @@ def create_order():
             
         total = 0
         items_text = ""
+        items_client_text = ""
+        
+        for item in cart:
+            price = int(item.get('price', 0))
+            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
+            name = item.get('name', 'Товар')
+            
+            total += price * qty
+            items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
+            items_client_text += f"• {name} x {qty} шт.\n"
+            
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
+            (user_id, username, items_text, total)
+        )
+        order_id = cur.lastrowid
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        # --- 1. Отправляем сообщение администратору ---
+        markup = telebot.types.InlineKeyboardMarkup()
+        btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
+        btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
+        markup.add(btn_confirm, btn_cancel)
+        
+        admin_text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\nПользователь: @{username} (ID: {user_id})\n\nТовары:\n{items_text}\n💰 Итого: {total} руб."
+        
+        try:
+            bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
+        except Exception as e:
+            print(f"Ошибка отправки уведомления админу: {e}", flush=True)
+
+        # --- 2. Отправляем подтверждающее сообщение клиенту ---
+        client_text = (
+            f"🎉 Ваш заказ успешно оформлен!\n\n"
+            f"🔢 Номер заказа: #{order_id}\n\n"
+            f"📦 Состав заказа:\n{items_client_text}\n"
+            f"💰 Итого к оплате: {total} руб.\n\n"
+            f"⏳ Ожидайте подтверждения от администратора."
+        )
+        
+        try:
+            bot.send_message(user_id, client_text)
+        except Exception as e:
+            print(f"Ошибка отправки сообщения клиенту: {e}", flush=True)
+            
+        return jsonify({'success': True, 'order_id': order_id})
+
+    except Exception as e:
+        print(f"Критическая ошибка в /api/order: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+        total = 0
+        items_text = ""
         
         for item in cart:
             price = int(item.get('price', 0))
