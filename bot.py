@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import re
 import json
+import threading
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAErKWlTfpV5EQPPSPCeZbAPopcfsJd5d-o')
@@ -12,6 +13,7 @@ ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
 
+# Создаем бота (без вебхуков)
 bot = telebot.TeleBot(TOKEN, parse_mode=None, threaded=False)
 
 flask_app = Flask(__name__, static_folder='.', static_url_path='')
@@ -65,7 +67,7 @@ def init_db():
 
 init_db()
 
-# --- МАРШРУТЫ ---
+# --- МАРШРУТЫ FLASK ---
 
 @flask_app.route('/')
 def index():
@@ -75,17 +77,7 @@ def index():
         return send_file(file_path)
     return "Файл index.html не найден", 404
 
-@flask_app.route('/webhook', methods=['POST'])
-def webhook():
-    try:
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-    except Exception as e:
-        print(f"Ошибка webhook: {e}", flush=True)
-    return '', 200
-
-# --- ТЕЛЕГРАМ БОТ ---
+# --- ТЕЛЕГРАМ БОТ (ЛОГИКА ПОЛЛИНГА) ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -99,21 +91,13 @@ def send_welcome(message):
         reply_markup=markup
     )
 
-@bot.message_handler(commands=['setwebhook'])
-def force_set_webhook(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    webhook_url = f"{RENDER_URL}/webhook"
-    bot.remove_webhook()
-    success = bot.set_webhook(url=webhook_url)
-    if success:
-        bot.send_message(message.chat.id, f"✅ Вебхук успешно привязан к:\n{webhook_url}")
-    else:
-        bot.send_message(message.chat.id, "❌ Не удалось привязать вебхук.")
-
-# Обработчик нажатий без лишних вызовов answer_callback_query, вызывающих 429 ошибку
 @bot.callback_query_handler(func=lambda call: True)
 def handle_all_callbacks(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
     if call.from_user.id != ADMIN_ID:
         return
 
@@ -205,7 +189,7 @@ def handle_all_callbacks(call):
     cur.close()
     conn.close()
 
-# --- API ---
+# --- API МАГАЗИНА ---
 
 @flask_app.route('/api/products', methods=['GET'])
 def get_products():
@@ -280,14 +264,27 @@ def create_order():
         print(f"Критическая ошибка в /api/order: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# Функция запуска бота в фоновом потоке
+def run_bot():
+    try:
+        # Очищаем старый вебхук на всякий случай, чтобы polling не конфликтовал
+        bot.remove_webhook()
+        print("Запуск бота в режиме Polling...", flush=True)
+        bot.infinity_polling(skip_pending=True)
+    except Exception as e:
+        print(f"Ошибка в потоке бота: {e}", flush=True)
+
 if __name__ == '__main__':
-    webhook_url = f"{RENDER_URL}/webhook"
+    # Сбрасываем вебхук программно перед стартом
     try:
         bot.remove_webhook()
-        success = bot.set_webhook(url=webhook_url)
-        print(f"Вебхук установлен: {success}", flush=True)
-    except Exception as e:
-        print(f"Ошибка установки вебхука: {e}", flush=True)
+    except Exception:
+        pass
 
+    # Запускаем бота в отдельном потоке, чтобы он не блокировал Flask
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    # Запускаем веб-сервер Flask для Mini App
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
