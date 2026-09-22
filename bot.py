@@ -99,6 +99,19 @@ def send_welcome(message):
         reply_markup=markup
     )
 
+# Команда для принудительной привязки вебхука прямо в чате
+@bot.message_handler(commands=['setwebhook'])
+def force_set_webhook(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    webhook_url = f"{RENDER_URL}/webhook"
+    bot.remove_webhook()
+    success = bot.set_webhook(url=webhook_url)
+    if success:
+        bot.send_message(message.chat.id, f"✅ Вебхук успешно привязан к:\n{webhook_url}")
+    else:
+        bot.send_message(message.chat.id, "❌ Не удалось привязать вебхук.")
+
 # Универсальный обработчик ВСЕХ нажатий на инлайн-кнопки
 @bot.callback_query_handler(func=lambda call: True)
 def handle_all_callbacks(call):
