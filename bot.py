@@ -33,7 +33,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
             price INTEGER,
-            quantity INTEGER DEFAULT 0
+            quantity INTEGER DEFAULT 0,
+            image_url TEXT DEFAULT ''
         )
     """)
     
@@ -303,7 +304,8 @@ def update_product():
     product_id = data.get('id')
     name = data.get('name')
     price = data.get('price')
-    quantity = data.get('quantity')
+    image_url = data.get('image_url', '')
+
 
     if not product_id:
         return jsonify({"error": "ID товара не указан"}), 400
@@ -311,10 +313,11 @@ def update_product():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(
-            "UPDATE products SET name = ?, price = ?, quantity = ? WHERE id = ?",
-            (name, price, quantity, product_id)
+                cur.execute(
+            "UPDATE products SET name = ?, price = ?, quantity = ?, image_url = ? WHERE id = ?",
+            (name, price, quantity, image_url, product_id)
         )
+
         conn.commit()
         cur.close()
         conn.close()
