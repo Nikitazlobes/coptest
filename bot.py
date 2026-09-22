@@ -188,7 +188,7 @@ def get_stats():
         "total_orders": total_orders,
         "total_revenue": total_revenue
     })
-@flask_app.route('/api/upload-pdf', methods=['POST'])
+@flask_app_route('/api/upload-pdf', methods=['POST'])
 def upload_pdf():
     user_id = request.form.get('user_id', type=int)
     if user_id != ADMIN_ID:
@@ -200,9 +200,9 @@ def upload_pdf():
     file = request.files['file']
     markup_rubles = float(request.form.get('markup_rubles', 0))
 
-    if file.filename == '':
+    if file.filename == "":
         return jsonify({"error": "Файл не выбран"}), 400
-        
+
     try:
         pdf_reader = PdfReader(io.BytesIO(file.read()))
         extracted_text = ""
@@ -210,85 +210,87 @@ def upload_pdf():
             text = page.extract_text()
             if text:
                 extracted_text += text + "\n"
-    except Exception as e:
-        return jsonify({"error": f"Ошибка чтения PDF: {str(e)}"}), 500
 
-    added_count = 0
-    lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
+        conn = get_db_connection()
+        cur = conn.cursor()
 
+        added_count = 0
+        lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
 
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        match_end = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', line)
-        
-        if match_end:
-            price_str = match_end.group(1).replace(' ', '').replace(',', '.')
-            qty_str = match_end.group(2)
-            name = line[:match_end.start()].strip()
-            name = re.sub(r'^\d+[\s\.\-)]*', '', name)
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            match_end = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', line)
             
-            try:
-                raw_price = float(price_str)
-                final_price = int(raw_price + markup_rubles)
-                quantity = int(qty_str)
+            if match_end:
+                price_str = match_end.group(1).replace(' ', '').replace(',', '.')
+                qty_str = match_end.group(2)
+                name = line[:match_end.start()].strip()
+                name = re.sub(r'^\d+[\s\.\-)]*', '', name)
                 
-                if name:
-                    cur.execute(
-                        "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
-                        (name, final_price, quantity)
-                    )
-                    added_count += 1
-            except ValueError:
-                pass
-            
-            i += 1
-        else:
-            name_parts = []
-            price_data = None
-            
-            while i < len(lines):
-                subline = lines[i]
-                price_match = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', subline)
-                if price_match:
-                    price_str = price_match.group(1).replace(' ', '').replace(',', '.')
-                    qty_str = price_match.group(2)
-                    leftover = subline[:price_match.start()].strip()
-                    if leftover:
-                        name_parts.append(leftover)
-                    
+                try:
                     final_price = int(float(price_str) + markup_rubles)
-                    price_data = (final_price, int(qty_str))
+                    quantity = int(qty_str)
                     
-                    i += 1
-                    break
-                else:
-                    name_parts.append(subline)
-                    i += 1
-
-            if price_data and name_parts:
-                full_name = " ".join(name_parts)
-                full_name = re.sub(r'^\d+[\s\.\-)]*', '', full_name).strip()
-                full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
+                    if name:
+                        cur.execute(
+                            "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
+                            (name, final_price, quantity)
+                        )
+                        added_count += 1
+                except ValueError:
+                    pass
                 
-                price, quantity = price_data
-                if full_name:
-                    cur.execute(
-                        "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
-                        (full_name, price, quantity)
-                    )
-                    added_count += 1
-            i += 1
+                i += 1
+            else:
+                name_parts = []
+                price_data = None
+                
+                while i < len(lines):
+                    subline = lines[i]
+                    price_match = re.search(r'([\d\s,\.]+)s*(\d+)s*штs*\(?([\d\s,\.]+)?', subline)
+                    if price_match:
+                        price_str = price_match.group(1).replace(' ', '').replace(',', '.')
+                        qty_str = price_match.group(2)
+                        leftover = subline[:price_match.start()].strip()
+                        if leftover:
+                            name_parts.append(leftover)
+                        
+                        final_price = int(float(price_str) + markup_rubles)
+                        price_data = (final_price, int(qty_str))
+                        
+                        i += 1
+                        break
+                    else:
+                        name_parts.append(subline)
+                        i += 1
 
-    conn.commit()
-    cur.close()
-    conn.close()
+                if price_data and name_parts:
+                    full_name = " ".join(name_parts)
+                    full_name = re.sub(r'^\d+[\s\.\-)]*', '', full_name).strip()
+                    full_name = re.sub(r'^[\d\s\.\-\–\—]+', '', full_name).strip()
+                    
+                    price, quantity = price_data
+                    if full_name:
+                        cur.execute(
+                            "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)",
+                            (full_name, price, quantity)
+                        )
+                        added_count += 1
+                i += 1
 
-    return jsonify({"status": "success", "added": added_count})
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({"status": "success", "added": added_count})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-@flask_app.route('/api/update-product', methods=['POST'])
+
+@flask_app_route('/api/update-product', methods=['POST'])
 def update_product():
+
     data = request.json
     user_id = data.get('user_id')
     if user_id != ADMIN_ID:
