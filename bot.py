@@ -49,10 +49,17 @@ def init_db():
             username TEXT,
             items TEXT,
             total INTEGER,
+            status TEXT DEFAULT 'new',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
+    # Проверяем и добавляем колонку status, если её не было в старой БД
+    try:
+        cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new'")
+    except sqlite3.OperationalError:
+        pass
+
     cur.execute("SELECT COUNT(*) FROM products;")
     count = cur.fetchone()[0]
     if count == 0:
@@ -75,9 +82,113 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
+def handle_order_action(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "Доступ запрещен", show_alert=True)
+        return
+
+    action, order_id_str = call.data.split('_')[1], call.data.split('_')[2]
+    order_id = int(order_id_str)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = cur.fetchone()
+
+    if not order:
+        cur.close()
+        conn.close()
+        bot.answer_callback_query(call.id, "Заказ не найден.")
+        return
+
+    current_status = order['status']
+    username = order['username']
+    user_id = order['user_id']
+    items_desc = order['items']
+    total = order['total']
+
+    if action == 'confirm':
+        if current_status == 'confirmed':
+            cur.close()
+            conn.close()
+            bot.answer_callback_query(call.id, "Заказ уже был подтвержден ранее.")
+            return
+
+        # Парсим товары из описания для списания со склада (формат: • Название x Кол-во шт.)
+        lines = items_desc.strip().split('\n')
+        for line in lines:
+            match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
+            if match:
+                prod_name = match.group(1).strip()
+                prod_count = int(match.group(2))
+                cur.execute("UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
+
+        cur.execute("UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        bot.edit_message_text(
+            f"✅ **Заказ #{order_id} ПОДТВЕРЖДЕН**\n\n"
+            f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
+            f"📦 **Состав заказа:**\n{items_desc}\n"
+            f"💰 **Итого:** {total} руб.\n\n"
+            f"*(Товары списаны со склада)*",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown"
+        )
+        bot.answer_callback_query(call.id, "Заказ подтвержден, со склада списаны товары.")
+        
+        # Уведомление клиенту
+        try:
+            bot.send_message(user_id, f"✅ Ваш заказ **#{order_id}** подтвержден администратором и собирается!")
+        except Exception:
+            pass
+
+    elif action == 'cancel':
+        if current_status == 'cancelled':
+            cur.close()
+            conn.close()
+            bot.answer_callback_query(call.id, "Заказ уже отменен.")
+            return
+
+        # Если заказ был подтвержден, а потом отменяется — возвращаем товары обратно на склад
+        if current_status == 'confirmed':
+            lines = items_desc.strip().split('\n')
+            for line in lines:
+                match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
+                if match:
+                    prod_name = match.group(1).strip()
+                    prod_count = int(match.group(2))
+                    cur.execute("UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+
+        cur.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        bot.edit_message_text(
+            f"❌ **Заказ #{order_id} ОТМЕНЕН**\n\n"
+            f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
+            f"📦 **Состав заказа:**\n{items_desc}\n"
+            f"💰 **Итого:** {total} руб.",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown"
+        )
+        bot.answer_callback_query(call.id, "Заказ отменен.")
+        
+        # Уведомление клиенту
+        try:
+            bot.send_message(user_id, f"❌ Ваш заказ **#{order_id}** был отменен администратором.")
+        except Exception:
+            pass
 
 # --- ВЕБ-СЕРВЕР FLASK И API ---
 
@@ -135,9 +246,7 @@ def upload_image():
         ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'jpg'
         filename = f"{uuid.uuid4()}.{ext}"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
-        
         file.save(filepath)
-        
         image_url = f"/static/uploads/{filename}"
         return jsonify({"status": "success", "image_url": image_url})
     except Exception as e:
@@ -159,28 +268,35 @@ def create_order():
 
     items_description = ""
     for item in items:
-        prod_id = item.get('id')
         count = item.get('count', 1)
         name = item.get('name')
         items_description += f"• {name} x {count} шт.\n"
-        cur.execute("UPDATE products SET quantity = quantity - ? WHERE id = ?", (count, prod_id))
+        # ВНИМАНИЕ: Складские остатки здесь больше не уменьшаются!
 
     cur.execute(
-        "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
+        "INSERT INTO orders (user_id, username, items, total, status) VALUES (?, ?, ?, ?, 'new')",
         (user_id, username, items_description, total)
     )
+    order_id = cur.lastrowid
     conn.commit()
     cur.close()
     conn.close()
 
     admin_message = (
-        f"🚨 **Новый заказ!**\n\n"
+        f"🚨 **Новый заказ #{order_id}!**\n\n"
         f"👤 Покупатель: @{username} (ID: `{user_id}`)\n\n"
         f"📦 **Состав заказа:**\n{items_description}\n"
         f"💰 **Итого:** {total} руб."
     )
+    
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}"),
+        telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
+    )
+
     try:
-        bot.send_message(ADMIN_ID, admin_message, parse_mode="Markdown")
+        bot.send_message(ADMIN_ID, admin_message, parse_mode="Markdown", reply_markup=markup)
     except Exception as e:
         print(f"Ошибка отправки уведомления админу: {e}")
 
@@ -194,7 +310,8 @@ def get_user_stats():
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*), SUM(total) FROM orders WHERE user_id = ?", (user_id,))
+    # Учитываем в статистике пользователя только подтвержденные заказы
+    cur.execute("SELECT COUNT(*), SUM(total) FROM orders WHERE user_id = ? AND status = 'confirmed'", (user_id,))
     row = cur.fetchone()
     cur.close()
     conn.close()
@@ -216,7 +333,7 @@ def get_stats():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT COUNT(*), SUM(total) FROM orders")
+    cur.execute("SELECT COUNT(*), SUM(total) FROM orders WHERE status = 'confirmed'")
     row = cur.fetchone()
     total_orders = row[0] if row[0] else 0
     total_revenue = row[1] if row[1] else 0
@@ -281,7 +398,6 @@ def upload_pdf():
                         added_count += 1
                 except ValueError:
                     pass
-                
                 i += 1
             else:
                 name_parts = []
@@ -299,7 +415,6 @@ def upload_pdf():
                         
                         final_price = int(float(price_str) + markup_rubles)
                         price_data = (final_price, int(qty_str))
-                        
                         i += 1
                         break
                     else:
