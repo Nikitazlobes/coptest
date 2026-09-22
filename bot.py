@@ -105,7 +105,7 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
 
@@ -180,7 +180,7 @@ def handle_all_callbacks(call):
                 message_id=call.message.message_id,
                 reply_markup=None
             )
-            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден и передан в сборку!")
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором!")
         except Exception as e:
             print(f"Ошибка редактирования: {e}")
 
