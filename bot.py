@@ -13,6 +13,8 @@ DB_NAME = 'c-opt-store.db'
 
 # Отключаем потоки, чтобы вебхуки работали корректно на сервере
 bot = telebot.TeleBot(TOKEN, parse_mode=None, threaded=False)
+
+# Настраиваем Flask так, чтобы он видел файлы сайта в папке static
 flask_app = Flask(__name__, static_folder='static', static_url_path='/static')
 CORS(flask_app)
 
@@ -59,7 +61,14 @@ def init_db():
 
 init_db()
 
-# --- ВЕБХУК ДЛЯ TELEGRAM ---
+# --- МАРШРУТЫ ДЛЯ МИНИ-ПРИЛОЖЕНИЯ И ВЕБХУКА ---
+
+@flask_app.route('/')
+def index():
+    # Отдает главную страницу мини-приложения из папки static
+    if os.path.exists('static/index.html'):
+        return send_file('static/index.html')
+    return "Магазин работает! Файл index.html не найден в папке static.", 200
 
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
@@ -97,18 +106,17 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_action(call):
-    # 1. Снимаем статус загрузки (часики) с кнопки
+    # Снимаем статус загрузки (часики) с кнопки
     try:
         bot.answer_callback_query(call.id, text="Обработка...")
     except Exception as e:
         print(f"Ошибка answer_callback_query: {e}")
 
-    # 2. Проверяем, админ ли нажал кнопку
+    # Проверяем, админ ли нажал кнопку
     if call.from_user.id != ADMIN_ID:
         bot.send_message(call.message.chat.id, "❌ У вас нет прав для этого действия.")
         return
 
-    # 3. Разбираем данные кнопки
     try:
         parts = call.data.split('_')
         if len(parts) < 3:
@@ -124,13 +132,12 @@ def handle_order_action(call):
     cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
     order = cur.fetchone()
 
-    # Если заказ не найден (база удалилась при перезагрузке Render)
     if not order:
         cur.close()
         conn.close()
         bot.send_message(
             call.message.chat.id, 
-            f"⚠️ Заказ #{order_id} не найден в базе. (Вероятно, база данных обнулилась после обновления кода на сервере)."
+            f"⚠️ Заказ #{order_id} не найден в базе (возможно, база обнулилась при перезагрузке Render)."
         )
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
@@ -150,7 +157,6 @@ def handle_order_action(call):
             conn.close()
             return
 
-        # Списание остатков
         try:
             lines = items_desc.strip().split('\n')
             for line in lines:
