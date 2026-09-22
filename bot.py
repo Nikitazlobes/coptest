@@ -186,6 +186,27 @@ def create_order():
 
     return jsonify({"status": "success", "message": "Заказ успешно оформлен"})
 
+@flask_app.route('/api/user-stats', methods=['GET'])
+def get_user_stats():
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({"orders_count": 0, "total_spent": 0})
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*), SUM(total) FROM orders WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    orders_count = row[0] if row[0] else 0
+    total_spent = row[1] if row[1] else 0
+
+    return jsonify({
+        "orders_count": orders_count,
+        "total_spent": total_spent
+    })
+
 @flask_app.route('/api/stats', methods=['GET'])
 def get_stats():
     user_id = request.args.get('user_id', type=int)
