@@ -1,16 +1,22 @@
 import os
 import sqlite3
+import time
+import re
+import json
 import telebot
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import re
-import json
+from werkzeug.utils import secure_filename
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEtqssUoPKmbntEUEMMjyuv8S_CQ8ecuTY')
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DB_NAME = 'c-opt-store.db'
+
+# Папка для сохранения картинок
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Создаем бота
 bot = telebot.TeleBot(TOKEN, parse_mode=None)
@@ -54,6 +60,11 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    try:
+        cur.execute("ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
     cur.execute("SELECT COUNT(*) FROM products;")
     count = cur.fetchone()[0]
     if count == 0:
@@ -66,7 +77,7 @@ def init_db():
 
 init_db()
 
-# --- АВТОМАТИЧЕСКАЯ УСТАНОВКА ВЕБХУКА ПРИ СТАРТЕ ---
+# --- ВЕБХУК ---
 try:
     bot.remove_webhook()
     webhook_url = f"{RENDER_URL}/webhook"
@@ -85,7 +96,6 @@ def index():
         return send_file(file_path)
     return "Файл index.html не найден", 404
 
-# МАРШРУТ ДЛЯ ПРИЕМА ДАННЫХ ОТ TELEGRAM
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -95,7 +105,7 @@ def webhook():
         return '', 200
     return 'Forbidden', 403
 
-# --- ЛОГИКА ТЕЛЕГРАМ БОТА ---
+# --- ЛОГИКА БОТА ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -105,7 +115,7 @@ def send_welcome(message):
     
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
         reply_markup=markup
     )
 
@@ -180,7 +190,7 @@ def handle_all_callbacks(call):
                 message_id=call.message.message_id,
                 reply_markup=None
             )
-            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором!")
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден и передан в сборку!")
         except Exception as e:
             print(f"Ошибка редактирования: {e}")
 
@@ -218,6 +228,59 @@ def get_products():
     cur.close()
     conn.close()
     return jsonify(products)
+
+@flask_app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'Файл не найден'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+
+        filename = secure_filename(file.filename)
+        unique_filename = f"{int(time.time())}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.save(filepath)
+
+        image_url = f"/{filepath}"
+        return jsonify({'image_url': image_url})
+    except Exception as e:
+        print(f"Ошибка при загрузке фото: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@flask_app.route('/api/update-product', methods=['POST'])
+def update_product():
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            data = request.form.to_dict()
+
+        product_id = data.get('id')
+        name = data.get('name')
+        price = data.get('price')
+        quantity = data.get('quantity', 0)
+        image_url = data.get('image_url', '')
+
+        if not product_id:
+            return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE products 
+            SET name = ?, price = ?, quantity = ?, image_url = ?
+            WHERE id = ?
+        """, (name, price, quantity, image_url, product_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Ошибка при сохранении товара: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @flask_app.route('/api/order', methods=['POST'])
 def create_order():
@@ -266,7 +329,7 @@ def create_order():
         cur.close()
         conn.close()
         
-        # --- 1. Отправляем сообщение администратору ---
+        # Сообщение админу
         markup = telebot.types.InlineKeyboardMarkup()
         btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
         btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
@@ -279,7 +342,7 @@ def create_order():
         except Exception as e:
             print(f"Ошибка отправки уведомления админу: {e}", flush=True)
 
-        # --- 2. Отправляем подтверждающее сообщение клиенту ---
+        # Сообщение клиенту
         client_text = (
             f"🎉 Ваш заказ успешно оформлен!\n\n"
             f"🔢 Номер заказа: #{order_id}\n\n"
@@ -297,77 +360,6 @@ def create_order():
 
     except Exception as e:
         print(f"Критическая ошибка в /api/order: {e}", flush=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-        total = 0
-        items_text = ""
-        
-        for item in cart:
-            price = int(item.get('price', 0))
-            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
-            name = item.get('name', 'Товар')
-            
-            total += price * qty
-            items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
-            
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
-            (user_id, username, items_text, total)
-        )
-        order_id = cur.lastrowid
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        markup = telebot.types.InlineKeyboardMarkup()
-        btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
-        btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
-        markup.add(btn_confirm, btn_cancel)
-        
-        admin_text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\nПользователь: @{username} (ID: {user_id})\n\nТовары:\n{items_text}\n💰 Итого: {total} руб."
-        
-        try:
-            bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
-        except Exception as e:
-            print(f"Ошибка отправки уведомления админу: {e}", flush=True)
-            
-        return jsonify({'success': True, 'order_id': order_id})
-
-    except Exception as e:
-        print(f"Критическая ошибка в /api/order: {e}", flush=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-@flask_app.route('/api/update-product', methods=['POST'])
-def update_product():
-    try:
-        data = request.get_json(silent=True)
-        if not data:
-            data = request.form.to_dict()
-
-        product_id = data.get('id')
-        name = data.get('name')
-        price = data.get('price')
-        quantity = data.get('quantity', 0)
-        image_url = data.get('image_url', '')
-
-        if not product_id:
-            return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE products 
-            SET name = ?, price = ?, quantity = ?, image_url = ?
-            WHERE id = ?
-        """, (name, price, quantity, image_url, product_id))
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f"Ошибка при сохранении товара: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
