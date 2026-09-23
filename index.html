@@ -538,7 +538,7 @@
 
         async function uploadImageFile(fileInputId) {
             const fileInput = document.getElementById(fileInputId);
-            if (!fileInput.files || fileInput.files.length === 0) return '';
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) return '';
 
             const formData = new FormData();
             formData.append('image', fileInput.files[0]);
@@ -547,8 +547,9 @@
             try {
                 const response = await fetch('/api/upload-image', { method: 'POST', body: formData });
                 const result = await response.json();
-                return response.ok ? result.image_url : '';
+                return result.image_url || '';
             } catch (e) {
+                console.error('Ошибка загрузки фото:', e);
                 return '';
             }
         }
@@ -706,13 +707,20 @@
                     body: JSON.stringify({ id: id, name: name, price: price, quantity: quantity, image_url: imageUrl, user_id: currentUserId })
                 });
 
-                if (response.ok) {
+                const result = await response.json();
+                if (response.ok && result.success) {
                     closeEditModal();
                     fetchProducts();
-                    if (tg) tg.showAlert('Товар изменен!');
+                    if (tg && typeof tg.showAlert === 'function') {
+                        tg.showAlert('Товар изменен!');
+                    } else {
+                        alert('Товар изменен!');
+                    }
+                } else {
+                    alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
                 }
             } catch (e) {
-                alert('Ошибка при изменении товара');
+                alert('Ошибка сети при изменении товара');
             }
         }
 
@@ -794,7 +802,6 @@
         async function checkout() {
             if (cart.length === 0) return;
 
-            // Группируем товары для бэкенда (ключ cartQuantity)
             const itemsMap = {};
             cart.forEach(item => {
                 if (!itemsMap[item.id]) {
