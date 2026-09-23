@@ -338,6 +338,37 @@ def create_order():
     except Exception as e:
         print(f"Критическая ошибка в /api/order: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+@flask_app.route('/api/update-product', methods=['POST'])
+def update_product():
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            data = request.form.to_dict()
+
+        product_id = data.get('id')
+        name = data.get('name')
+        price = data.get('price')
+        quantity = data.get('quantity', 0)
+        image_url = data.get('image_url', '')
+
+        if not product_id:
+            return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE products 
+            SET name = ?, price = ?, quantity = ?, image_url = ?
+            WHERE id = ?
+        """, (name, price, quantity, image_url, product_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Ошибка при сохранении товара: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
