@@ -852,36 +852,44 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        async function uploadPdfCatalog() {
-            const fileInput = document.getElementById('pdf-file');
-            const markupInput = document.getElementById('markup-rubles');
-            const btn = document.getElementById('pdf-btn');
+async function uploadPdfCatalog() {
+    const fileInput = document.getElementById('pdf-file');
+    const markupInput = document.getElementById('markup-rubles');
+    const btn = document.getElementById('pdf-btn');
 
-            if (fileInput.files.length === 0) {
-                alert('Выберите PDF файл!');
-                return;
-            }
+    if (fileInput.files.length === 0) {
+        alert('Выберите PDF файл!');
+        return;
+    }
 
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            formData.append('user_id', currentUserId);
-            formData.append('markup_rubles', markupInput.value || 0);
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('user_id', currentUserId);
+    formData.append('markup_rubles', markupInput.value || 0);
 
-            btn.innerText = 'Загрузка...';
-            try {
-                const response = await fetch('/api/upload-pdf', { method: 'POST', body: formData });
-                const result = await response.json();
-                if (response.ok) {
-                    alert(`Успешно добавлено товаров: ${result.added}`);
-                    fileInput.value = '';
-                    fetchProducts();
-                }
-            } catch (e) {}
-            btn.innerText = 'Загрузить прайс';
+    btn.innerText = 'Загрузка...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/upload-pdf', { 
+            method: 'POST', 
+            body: formData 
+        });
+        
+        const result = await response.json().catch(() => ({}));
+
+        if (response.ok && result.added !== undefined) {
+            alert(`Успешно добавлено товаров: ${result.added}`);
+            fileInput.value = '';
+            fetchProducts();
+        } else {
+            alert(`Ошибка (${response.status}): ${result.error || 'Не удалось распарсить PDF'}`);
         }
+    } catch (e) {
+        alert('Ошибка сети: ' + e.message);
+    } finally {
+        btn.innerText = 'Загрузить прайс';
+        btn.disabled = false;
+    }
+}
 
-        fetchProducts();
-        fetchUserStats();
-    </script>
-</body>
-</html>
