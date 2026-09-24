@@ -302,36 +302,29 @@ def api_upload_pdf():
             if extracted:
                 full_text += extracted + "\n"
         
+        # Выводим текст в лог Render, чтобы увидеть, что читает библиотека
+        print(f"--- ТЕКСТ ИЗ PDF ---\n{full_text[:500]}\n--------------------", flush=True)
+        
         conn = get_db_connection()
         cur = conn.cursor()
         added_count = 0
         
         lines = full_text.split('\n')
-        
         for line in lines:
             line = line.strip()
             if not line:
                 continue
                 
-            # Пропускаем строки шапки и итогов
-            if any(w in line for w in ["MG OPT", "ЗАКАЗ №", "Заказчик", "Наименование", "Итого", "к оплате"]):
-                continue
-
-            # Ищем цену в строке (например, 1300,00 или 275.00)
             price_match = re.search(r'(\d+[\s\d]*[.,]\d{2})', line)
             if price_match:
                 price_str = price_match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     base_price = float(price_str)
-                    if base_price < 10:  # Игнорируем мелкие числа (номера, количество)
+                    if base_price < 10:
                         continue
                         
                     final_price = int(base_price + markup_rubles)
-                    
-                    # Название — это всё, что идет до цены
                     name_part = line[:price_match.start()].replace('|', '').strip()
-                    
-                    # Убираем порядковый номер в начале (например "1 ", "9.", "22 ")
                     clean_name = re.sub(r'^\d+[\.\)]?\s*', '', name_part).strip()
                     
                     if len(clean_name) > 2:
@@ -344,11 +337,13 @@ def api_upload_pdf():
         cur.close()
         conn.close()
 
+        print(f"Успешно добавлено товаров: {added_count}", flush=True)
         return jsonify({'success': True, 'added': added_count})
 
     except Exception as e:
         print(f"Ошибка загрузки PDF: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
+
 
 @flask_app.route('/api/order', methods=['POST'])
 def create_order():
