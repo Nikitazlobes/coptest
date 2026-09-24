@@ -302,47 +302,55 @@ def api_upload_pdf():
             if extracted:
                 full_text += extracted + "\n"
         
-        # Выводим текст в лог Render, чтобы увидеть, что читает библиотека
-        print(f"--- ТЕКСТ ИЗ PDF ---\n{full_text[:500]}\n--------------------", flush=True)
-        
         conn = get_db_connection()
         cur = conn.cursor()
         added_count = 0
         
-        lines = full_text.split('\n')
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            price_match = re.search(r'(\d+[\s\d]*[.,]\d{2})', line)
-            if price_match:
-                price_str = price_match.group(1).replace(' ', '').replace(',', '.')
-                try:
-                    base_price = float(price_str)
-                    if base_price < 10:
-                        continue
-                        
-                    final_price = int(base_price + markup_rubles)
-                    name_part = line[:price_match.start()].replace('|', '').strip()
-                    clean_name = re.sub(r'^\d+[\.\)]?\s*', '', name_part).strip()
+        # Шаблон ищет цену + 'шт' + итоговую сумму + номер следующей строки (или конец)
+        # Пример из логов: 270,002шт540,007
+        pattern = r'(\d+[\s\d]*[.,]\d{2})\s*(\d+)\s*шт\s*\d+[\s\d]*[.,]\d{2}\s*(\d+)?'
+        
+        matches = list(re.finditer(pattern, full_text, re.IGNORECASE))
+        
+        last_end = 0
+        for i, match in enumerate(matches):
+            price_str = match.group(1).replace(' ', '').replace(',', '.')
+            try:
+                base_price = float(price_str)
+                if base_price < 10:
+                    continue
                     
-                    if len(clean_name) > 2:
-                        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, 10))
-                        added_count += 1
-                except ValueError:
-                    pass
+                final_price = int(base_price + markup_rubles)
+                
+                # Название находится МЕЖДУ концом предыдущего совпадения и началом текущей цены
+                raw_name = full_text[last_end:match.start()].strip()
+                last_end = match.end()
+                
+                # Очищаем название от лишних символов и служебных слов
+                clean_name = re.sub(r'^\d+[\.\)]?\s*', '', raw_name).strip()
+                clean_name = clean_name.replace('\n', ' ').replace('|', '').strip()
+                
+                # Пропускаем шапки накладной
+                if any(w in clean_name.lower() for w in ["mg opt", "заказ №", "заказчик", "наименование", "итого"]):
+                    continue
+
+                if len(clean_name) > 2:
+                    cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, 10))
+                    added_count += 1
+            except ValueError:
+                pass
 
         conn.commit()
         cur.close()
         conn.close()
 
-        print(f"Успешно добавлено товаров: {added_count}", flush=True)
+        print(f"Успешно спарсено и добавлено товаров: {added_count}", flush=True)
         return jsonify({'success': True, 'added': added_count})
 
     except Exception as e:
         print(f"Ошибка загрузки PDF: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
+
 
 
 @flask_app.route('/api/order', methods=['POST'])
