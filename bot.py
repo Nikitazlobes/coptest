@@ -4,6 +4,7 @@ import time
 import re
 import json
 import telebot
+import PyPDF2
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -281,6 +282,60 @@ def update_product():
     except Exception as e:
         print(f"Ошибка при сохранении товара: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/upload-pdf', methods=['POST'])
+def api_upload_pdf():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Файл не найден в запросе'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+
+        markup_rubles = int(request.form.get('markup_rubles', 0))
+        
+        # Читаем текст из PDF
+        pdf_reader = PyPDF2.PdfReader(file)
+        text = ""
+        for page in pdf_reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted + "\n"
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        added_count = 0
+        
+        lines = text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Простая логика парсинга: ищет текст слева и число (цену) справа в конце строки
+            match = re.search(r'(.*?)\s+(\d+)\s*$', line)
+            if match:
+                product_name = match.group(1).strip()
+                try:
+                    base_price = int(match.group(2))
+                    final_price = base_price + markup_rubles
+                    
+                    if len(product_name) > 2 and final_price > 0:
+                        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (product_name, final_price, 10))
+                        added_count += 1
+                except ValueError:
+                    pass
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True, 'added': added_count})
+
+    except Exception as e:
+        print(f"Ошибка загрузки PDF: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
 
 @flask_app.route('/api/order', methods=['POST'])
 def create_order():
