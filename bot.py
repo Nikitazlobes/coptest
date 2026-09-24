@@ -297,35 +297,64 @@ def api_upload_pdf():
         
         # Читаем текст из PDF
         pdf_reader = PyPDF2.PdfReader(file)
-        text = ""
+        full_text = ""
         for page in pdf_reader.pages:
             extracted = page.extract_text()
             if extracted:
-                text += extracted + "\n"
+                full_text += extracted + "\n"
         
         conn = get_db_connection()
         cur = conn.cursor()
         added_count = 0
         
-        lines = text.split('\n')
+        # Улучшенный парсинг накладной
+        lines = full_text.split('\n')
+        current_product_name = ""
+        
         for line in lines:
             line = line.strip()
             if not line:
                 continue
+                
+            # Пропускаем служебные строки шапки и подвала
+            if "MG OPT" in line or "ЗАКАЗ №" in line or "Заказчик" in line or "Наименование товара" in line or "Итого" in line:
+                current_product_name = ""
+                continue
+
+            # Ищем строку с ценой (например: "1300,00 | 1 | шт" или просто заканчивается на число с запятой/точкой)
+            # Шаблон ищет цену вида XXX,XX или XXX.XX в конце или середине строки перед разделителем '|'
+            price_match = re.search(r'([\d\s]+[.,]\d{2})\s*(?:\||$)', line)
             
-            # Простая логика парсинга: ищет текст слева и число (цену) справа в конце строки
-            match = re.search(r'(.*?)\s+(\d+)\s*$', line)
-            if match:
-                product_name = match.group(1).strip()
+            if price_match and ('|' in line or 'шт' in line.lower() or 'шt' in line.lower()):
+                # Если в этой же строке или в накопленном буфере есть название
+                price_str = price_match.group(1).replace(' ', '').replace(',', '.')
                 try:
-                    base_price = int(match.group(2))
-                    final_price = base_price + markup_rubles
+                    base_price = float(price_str)
+                    final_price = int(base_price + markup_rubles)
                     
-                    if len(product_name) > 2 and final_price > 0:
-                        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (product_name, final_price, 10))
+                    # Извлекаем название: берем всё, что накопилось до цены
+                    full_name = current_product_name + " " + line[:price_match.start()]
+                    full_name = full_name.replace('|', '').strip()
+                    
+                    # Очищаем от порядкового номера в начале (например, "1 ", "22. ")
+                    full_name = re.sub(r'^\d+[\.\)]?\s*', '', full_name).strip()
+                    
+                    if len(full_name) > 2 and final_price > 0:
+                        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (full_name, final_price, 10))
                         added_count += 1
+                        
+                    current_product_name = ""
                 except ValueError:
                     pass
+            else:
+                # Если это просто строка с частью названия товара (перенос строки)
+                # Очищаем от ведущего номера, если он попал сюда
+                clean_line = re.sub(r'^\d+[\.\)]?\s*', '', line).strip()
+                if clean_line and not "Итого" in clean_line:
+                    if current_product_name:
+                        current_product_name += " " + clean_line
+                    else:
+                        current_product_name = clean_line
 
         conn.commit()
         cur.close()
