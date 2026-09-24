@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import time
 import re
 import json
@@ -13,6 +15,7 @@ from werkzeug.utils import secure_filename
 TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEtqssUoPKmbntEUEMMjyuv8S_CQ8ecuTY')
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
+DATABASE_URL = os.environ.get('DATABASE_URL')
 DB_NAME = 'c-opt-store.db'
 
 # Папка для сохранения картинок
@@ -26,51 +29,89 @@ flask_app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(flask_app)
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if DATABASE_URL:
+        # Для Render всегда подключаемся к PostgreSQL
+        url = DATABASE_URL.replace("postgres://", "postgresql://")
+        return psycopg2.connect(url, cursor_factory=RealDictCursor)
+    else:
+        # Резервный SQLite для локальной разработки
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def db_execute(cur, sql, params=()):
+    """ Вспомогательная функция для одинаковых запросов в Postgres и SQLite """
+    if DATABASE_URL:
+        sql = sql.replace('?', '%s')
+    cur.execute(sql, params)
 
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            price INTEGER,
-            quantity INTEGER DEFAULT 0,
-            image_url TEXT DEFAULT ''
-        )
-    """)
-    
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id BIGINT,
-            username TEXT,
-            items TEXT,
-            total INTEGER,
-            status TEXT DEFAULT 'new',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    try:
-        cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new'")
-    except sqlite3.OperationalError:
-        pass
+    if DATABASE_URL:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id SERIAL PRIMARY KEY,
+                name TEXT,
+                price REAL,
+                quantity INTEGER DEFAULT 0,
+                image_url TEXT DEFAULT ''
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                username TEXT,
+                items TEXT,
+                total REAL,
+                status TEXT DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("SELECT COUNT(*) FROM products;")
+        row = cur.fetchone()
+        count = row['count'] if isinstance(row, dict) else row[0]
+        if count == 0:
+            cur.execute("INSERT INTO products (name, price, quantity) VALUES (%s, %s, %s)", ("Картридж", 500, 10))
+            cur.execute("INSERT INTO products (name, price, quantity) VALUES (%s, %s, %s)", ("Жидкость", 400, 15))
+    else:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                price REAL,
+                quantity INTEGER DEFAULT 0,
+                image_url TEXT DEFAULT ''
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id BIGINT,
+                username TEXT,
+                items TEXT,
+                total REAL,
+                status TEXT DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        try:
+            cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new'")
+        except sqlite3.OperationalError:
+            pass
 
-    try:
-        cur.execute("ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
+        try:
+            cur.execute("ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
-    cur.execute("SELECT COUNT(*) FROM products;")
-    count = cur.fetchone()[0]
-    if count == 0:
-        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Картридж", 500, 10))
-        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Жидкость", 400, 15))
+        cur.execute("SELECT COUNT(*) FROM products;")
+        count = cur.fetchone()[0]
+        if count == 0:
+            cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Картридж", 500, 10))
+            cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Жидкость", 400, 15))
     
     conn.commit()
     cur.close()
@@ -146,7 +187,7 @@ def handle_all_callbacks(call):
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    db_execute(cur, "SELECT * FROM orders WHERE id = ?", (order_id,))
     order = cur.fetchone()
 
     if not order:
@@ -177,11 +218,11 @@ def handle_all_callbacks(call):
                 if match:
                     prod_name = match.group(1).strip()
                     prod_count = int(match.group(2))
-                    cur.execute("UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
+                    db_execute(cur, "UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
         except Exception as e:
             print(f"Ошибка списания остатков: {e}")
 
-        cur.execute("UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
+        db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
         conn.commit()
 
         try:
@@ -201,7 +242,7 @@ def handle_all_callbacks(call):
             conn.close()
             return
 
-        cur.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
         conn.commit()
 
         try:
@@ -272,15 +313,13 @@ def update_or_add_product():
         cur = conn.cursor()
 
         if product_id:
-            # Если ID есть — обновляем существующий товар
-            cur.execute("""
+            db_execute(cur, """
                 UPDATE products 
                 SET name = ?, price = ?, quantity = ?, image_url = ?
                 WHERE id = ?
             """, (name, float(price), int(quantity), image_url, product_id))
         else:
-            # Если ID нет — создаем новый товар
-            cur.execute("""
+            db_execute(cur, """
                 INSERT INTO products (name, price, quantity, image_url)
                 VALUES (?, ?, ?, ?)
             """, (name, float(price), int(quantity), image_url))
@@ -294,7 +333,6 @@ def update_or_add_product():
         print(f"Ошибка при сохранении/добавлении товара: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-        
 @flask_app.route('/api/delete-product', methods=['POST'])
 def delete_product():
     try:
@@ -308,7 +346,7 @@ def delete_product():
 
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        db_execute(cur, "DELETE FROM products WHERE id = ?", (product_id,))
         conn.commit()
         cur.close()
         conn.close()
@@ -341,15 +379,13 @@ def api_upload_pdf():
         cur = conn.cursor()
         added_count = 0
         
-        # Шаблон ищет цену + количество + 'шт' + итоговую сумму
         pattern = r'(\d+[\s\d]*[.,]\d{2})\s*(\d+)\s*шт\s*\d+[\s\d]*[.,]\d{2}\s*(\d+)?'
-        
         matches = list(re.finditer(pattern, full_text, re.IGNORECASE))
         
         last_end = 0
-        for i, match in enumerate(matches):
+        for match in matches:
             price_str = match.group(1).replace(' ', '').replace(',', '.')
-            qty_str = match.group(2) # Достаем реальное количество из накладной
+            qty_str = match.group(2)
             
             try:
                 base_price = float(price_str)
@@ -357,22 +393,19 @@ def api_upload_pdf():
                     continue
                     
                 final_price = int(base_price + markup_rubles)
-                quantity = int(qty_str) if qty_str else 1 # Берем количество из файла
+                quantity = int(qty_str) if qty_str else 1
                 
-                # Название находится МЕЖДУ концом предыдущего совпадения и началом текущей цены
                 raw_name = full_text[last_end:match.start()].strip()
                 last_end = match.end()
                 
-                # Очищаем название от лишних символов и служебных слов
                 clean_name = re.sub(r'^\d+[\.\)]?\s*', '', raw_name).strip()
                 clean_name = clean_name.replace('\n', ' ').replace('|', '').strip()
                 
-                # Пропускаем шапки накладной
                 if any(w in clean_name.lower() for w in ["mg opt", "заказ №", "заказчик", "наименование", "итого"]):
                     continue
 
                 if len(clean_name) > 2:
-                    cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, quantity))
+                    db_execute(cur, "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, quantity))
                     added_count += 1
             except ValueError:
                 pass
@@ -426,11 +459,20 @@ def create_order():
             
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
-            (user_id, username, items_text, total)
-        )
-        order_id = cur.lastrowid
+        
+        if DATABASE_URL:
+            cur.execute(
+                "INSERT INTO orders (user_id, username, items, total) VALUES (%s, %s, %s, %s) RETURNING id",
+                (user_id, username, items_text, total)
+            )
+            order_id = cur.fetchone()['id']
+        else:
+            cur.execute(
+                "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
+                (user_id, username, items_text, total)
+            )
+            order_id = cur.lastrowid
+
         conn.commit()
         cur.close()
         conn.close()
