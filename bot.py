@@ -295,7 +295,6 @@ def api_upload_pdf():
 
         markup_rubles = int(request.form.get('markup_rubles', 0))
         
-        # Читаем текст из PDF
         pdf_reader = PyPDF2.PdfReader(file)
         full_text = ""
         for page in pdf_reader.pages:
@@ -307,54 +306,39 @@ def api_upload_pdf():
         cur = conn.cursor()
         added_count = 0
         
-        # Улучшенный парсинг накладной
         lines = full_text.split('\n')
-        current_product_name = ""
         
         for line in lines:
             line = line.strip()
             if not line:
                 continue
                 
-            # Пропускаем служебные строки шапки и подвала
-            if "MG OPT" in line or "ЗАКАЗ №" in line or "Заказчик" in line or "Наименование товара" in line or "Итого" in line:
-                current_product_name = ""
+            # Пропускаем строки шапки и итогов
+            if any(w in line for w in ["MG OPT", "ЗАКАЗ №", "Заказчик", "Наименование", "Итого", "к оплате"]):
                 continue
 
-            # Ищем строку с ценой (например: "1300,00 | 1 | шт" или просто заканчивается на число с запятой/точкой)
-            # Шаблон ищет цену вида XXX,XX или XXX.XX в конце или середине строки перед разделителем '|'
-            price_match = re.search(r'([\d\s]+[.,]\d{2})\s*(?:\||$)', line)
-            
-            if price_match and ('|' in line or 'шт' in line.lower() or 'шt' in line.lower()):
-                # Если в этой же строке или в накопленном буфере есть название
+            # Ищем цену в строке (например, 1300,00 или 275.00)
+            price_match = re.search(r'(\d+[\s\d]*[.,]\d{2})', line)
+            if price_match:
                 price_str = price_match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     base_price = float(price_str)
+                    if base_price < 10:  # Игнорируем мелкие числа (номера, количество)
+                        continue
+                        
                     final_price = int(base_price + markup_rubles)
                     
-                    # Извлекаем название: берем всё, что накопилось до цены
-                    full_name = current_product_name + " " + line[:price_match.start()]
-                    full_name = full_name.replace('|', '').strip()
+                    # Название — это всё, что идет до цены
+                    name_part = line[:price_match.start()].replace('|', '').strip()
                     
-                    # Очищаем от порядкового номера в начале (например, "1 ", "22. ")
-                    full_name = re.sub(r'^\d+[\.\)]?\s*', '', full_name).strip()
+                    # Убираем порядковый номер в начале (например "1 ", "9.", "22 ")
+                    clean_name = re.sub(r'^\d+[\.\)]?\s*', '', name_part).strip()
                     
-                    if len(full_name) > 2 and final_price > 0:
-                        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (full_name, final_price, 10))
+                    if len(clean_name) > 2:
+                        cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, 10))
                         added_count += 1
-                        
-                    current_product_name = ""
                 except ValueError:
                     pass
-            else:
-                # Если это просто строка с частью названия товара (перенос строки)
-                # Очищаем от ведущего номера, если он попал сюда
-                clean_line = re.sub(r'^\d+[\.\)]?\s*', '', line).strip()
-                if clean_line and not "Итого" in clean_line:
-                    if current_product_name:
-                        current_product_name += " " + clean_line
-                    else:
-                        current_product_name = clean_line
 
         conn.commit()
         cur.close()
@@ -413,7 +397,6 @@ def create_order():
         cur.close()
         conn.close()
         
-        # Сообщение админу
         markup = telebot.types.InlineKeyboardMarkup()
         btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
         btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
@@ -426,7 +409,6 @@ def create_order():
         except Exception as e:
             print(f"Ошибка отправки уведомления админу: {e}", flush=True)
 
-        # Сообщение клиенту
         client_text = (
             f"🎉 Ваш заказ успешно оформлен!\n\n"
             f"🔢 Номер заказа: #{order_id}\n\n"
