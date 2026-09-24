@@ -1,4 +1,4 @@
 Flask
-Flask-CORS
-pyTelegramBotAPI
+PyTelegramBotAPI
 PyPDF2
+psycopg2-binary
