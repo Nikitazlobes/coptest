@@ -857,7 +857,7 @@ async function uploadPdfCatalog() {
     const markupInput = document.getElementById('markup-rubles');
     const btn = document.getElementById('pdf-btn');
 
-    if (fileInput.files.length === 0) {
+    if (!fileInput || fileInput.files.length === 0) {
         alert('Выберите PDF файл!');
         return;
     }
@@ -893,3 +893,9 @@ async function uploadPdfCatalog() {
     }
 }
 
+fetchProducts();
+fetchUserStats();
+</script>
+
+</body>
+</html>
