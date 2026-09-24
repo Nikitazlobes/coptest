@@ -329,8 +329,7 @@ def api_upload_pdf():
         cur = conn.cursor()
         added_count = 0
         
-        # Шаблон ищет цену + 'шт' + итоговую сумму + номер следующей строки (или конец)
-        # Пример из логов: 270,002шт540,007
+        # Шаблон ищет цену + количество + 'шт' + итоговую сумму
         pattern = r'(\d+[\s\d]*[.,]\d{2})\s*(\d+)\s*шт\s*\d+[\s\d]*[.,]\d{2}\s*(\d+)?'
         
         matches = list(re.finditer(pattern, full_text, re.IGNORECASE))
@@ -338,12 +337,15 @@ def api_upload_pdf():
         last_end = 0
         for i, match in enumerate(matches):
             price_str = match.group(1).replace(' ', '').replace(',', '.')
+            qty_str = match.group(2) # Достаем реальное количество из накладной
+            
             try:
                 base_price = float(price_str)
                 if base_price < 10:
                     continue
                     
                 final_price = int(base_price + markup_rubles)
+                quantity = int(qty_str) if qty_str else 1 # Берем количество из файла
                 
                 # Название находится МЕЖДУ концом предыдущего совпадения и началом текущей цены
                 raw_name = full_text[last_end:match.start()].strip()
@@ -358,7 +360,7 @@ def api_upload_pdf():
                     continue
 
                 if len(clean_name) > 2:
-                    cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, 10))
+                    cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, quantity))
                     added_count += 1
             except ValueError:
                 pass
@@ -373,8 +375,6 @@ def api_upload_pdf():
     except Exception as e:
         print(f"Ошибка загрузки PDF: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
-
-
 
 @flask_app.route('/api/order', methods=['POST'])
 def create_order():
