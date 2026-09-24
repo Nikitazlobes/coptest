@@ -252,7 +252,8 @@ def upload_image():
         return jsonify({'error': str(e)}), 500
 
 @flask_app.route('/api/update-product', methods=['POST'])
-def update_product():
+@flask_app.route('/api/add-product', methods=['POST'])
+def update_or_add_product():
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -264,24 +265,35 @@ def update_product():
         quantity = data.get('quantity', 0)
         image_url = data.get('image_url', '')
 
-        if not product_id:
-            return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
+        if not name or price is None:
+            return jsonify({'success': False, 'error': 'Заполните название и цену'}), 400
 
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("""
-            UPDATE products 
-            SET name = ?, price = ?, quantity = ?, image_url = ?
-            WHERE id = ?
-        """, (name, price, quantity, image_url, product_id))
+
+        if product_id:
+            # Если ID есть — обновляем существующий товар
+            cur.execute("""
+                UPDATE products 
+                SET name = ?, price = ?, quantity = ?, image_url = ?
+                WHERE id = ?
+            """, (name, float(price), int(quantity), image_url, product_id))
+        else:
+            # Если ID нет — создаем новый товар
+            cur.execute("""
+                INSERT INTO products (name, price, quantity, image_url)
+                VALUES (?, ?, ?, ?)
+            """, (name, float(price), int(quantity), image_url))
+
         conn.commit()
         cur.close()
         conn.close()
 
         return jsonify({'success': True})
     except Exception as e:
-        print(f"Ошибка при сохранении товара: {e}", flush=True)
+        print(f"Ошибка при сохранении/добавлении товара: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
         
 @flask_app.route('/api/delete-product', methods=['POST'])
 def delete_product():
