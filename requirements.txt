@@ -1,4 +1,5 @@
 Flask
+Flask-CORS
 PyTelegramBotAPI
 PyPDF2
 psycopg2-binary
