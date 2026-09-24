@@ -282,6 +282,29 @@ def update_product():
     except Exception as e:
         print(f"Ошибка при сохранении товара: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+        
+@flask_app.route('/api/delete-product', methods=['POST'])
+def delete_product():
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            data = request.form.to_dict()
+
+        product_id = data.get('id')
+        if not product_id:
+            return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Ошибка при удалении товара: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @flask_app.route('/api/upload-pdf', methods=['POST'])
 def api_upload_pdf():
