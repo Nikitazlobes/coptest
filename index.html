@@ -409,7 +409,11 @@
                 <input type="number" id="add-quantity" value="10" placeholder="10">
             </div>
             <div class="form-group">
-                <label>Фотография (JPG/PNG)</label>
+                <label>Ссылка на фото (URL) — сохраняется всегда</label>
+                <input type="url" id="add-image-url" placeholder="https://i.ibb.co/example/photo.jpg">
+            </div>
+            <div class="form-group">
+                <label>Или загрузить файл (временное фото)</label>
                 <input type="file" id="add-image-file" accept="image/*" style="padding: 6px;">
             </div>
             <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
@@ -463,7 +467,11 @@
                 <input type="number" id="edit-quantity">
             </div>
             <div class="form-group">
-                <label>Новое фото (необязательно)</label>
+                <label>Ссылка на фото (URL)</label>
+                <input type="url" id="edit-image-url" placeholder="https://i.ibb.co/example/photo.jpg">
+            </div>
+            <div class="form-group">
+                <label>Или загрузить новый файл</label>
                 <input type="file" id="edit-image-file" accept="image/*" style="padding: 6px;">
             </div>
             <div style="display: flex; gap: 8px; margin-top: 16px;">
@@ -636,6 +644,7 @@
             const name = document.getElementById('add-name').value;
             const price = parseFloat(document.getElementById('add-price').value);
             const quantity = parseInt(document.getElementById('add-quantity').value) || 0;
+            const urlInput = document.getElementById('add-image-url').value.trim();
             const btn = document.getElementById('add-btn');
             
             if (!name || isNaN(price)) {
@@ -643,11 +652,21 @@
                 return;
             }
 
-            btn.innerText = 'Загрузка фото...';
-            let imageUrl = await uploadImageFile('add-image-file');
+            let imageUrl = urlInput;
+
+            if (!imageUrl) {
+                btn.innerText = 'Загрузка фото...';
+                imageUrl = await uploadImageFile('add-image-file');
+            }
 
             btn.innerText = 'Сохранение...';
-            const newProd = { name: name, price: price, quantity: quantity, image_url: imageUrl, user_id: currentUserId };
+            const newProd = { 
+                name: name, 
+                price: price, 
+                quantity: quantity, 
+                image_url: imageUrl, 
+                user_id: currentUserId 
+            };
             
             try {
                 const response = await fetch('/api/products', {
@@ -661,11 +680,14 @@
                     document.getElementById('add-name').value = '';
                     document.getElementById('add-price').value = '';
                     document.getElementById('add-quantity').value = '10';
+                    document.getElementById('add-image-url').value = '';
                     document.getElementById('add-image-file').value = '';
                     if (tg) { tg.showAlert('Товар успешно сохранен!'); } else { alert('Товар успешно сохранен!'); }
                     switchTab('catalog', document.querySelectorAll('.nav-item')[1]);
                 }
-            } catch (e) {}
+            } catch (e) {
+                alert('Ошибка сети при добавлении товара');
+            }
             btn.innerText = 'Сохранить в базу';
         }
 
@@ -675,6 +697,13 @@
             document.getElementById('edit-price').value = price;
             document.getElementById('edit-quantity').value = quantity;
             document.getElementById('edit-old-image').value = imageUrl;
+            
+            if (imageUrl && imageUrl.startsWith('http')) {
+                document.getElementById('edit-image-url').value = imageUrl;
+            } else {
+                document.getElementById('edit-image-url').value = '';
+            }
+            
             document.getElementById('edit-image-file').value = '';
             document.getElementById('edit-modal').style.display = 'flex';
         }
@@ -688,6 +717,7 @@
             const name = document.getElementById('edit-name').value;
             const price = parseFloat(document.getElementById('edit-price').value);
             const quantity = parseInt(document.getElementById('edit-quantity').value) || 0;
+            const newUrl = document.getElementById('edit-image-url').value.trim();
             let imageUrl = document.getElementById('edit-old-image').value;
 
             if (!name || isNaN(price)) {
@@ -695,16 +725,25 @@
                 return;
             }
 
-            const newImage = await uploadImageFile('edit-image-file');
-            if (newImage) {
-                imageUrl = newImage;
+            const uploadedImage = await uploadImageFile('edit-image-file');
+            if (uploadedImage) {
+                imageUrl = uploadedImage;
+            } else if (newUrl) {
+                imageUrl = newUrl;
             }
 
             try {
                 const response = await fetch('/api/update-product', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: id, name: name, price: price, quantity: quantity, image_url: imageUrl, user_id: currentUserId })
+                    body: JSON.stringify({ 
+                        id: id, 
+                        name: name, 
+                        price: price, 
+                        quantity: quantity, 
+                        image_url: imageUrl, 
+                        user_id: currentUserId 
+                    })
                 });
 
                 const result = await response.json();
@@ -852,50 +891,49 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-async function uploadPdfCatalog() {
-    const fileInput = document.getElementById('pdf-file');
-    const markupInput = document.getElementById('markup-rubles');
-    const btn = document.getElementById('pdf-btn');
+        async function uploadPdfCatalog() {
+            const fileInput = document.getElementById('pdf-file');
+            const markupInput = document.getElementById('markup-rubles');
+            const btn = document.getElementById('pdf-btn');
 
-    if (!fileInput || fileInput.files.length === 0) {
-        alert('Выберите PDF файл!');
-        return;
-    }
+            if (!fileInput || fileInput.files.length === 0) {
+                alert('Выберите PDF файл!');
+                return;
+            }
 
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    formData.append('user_id', currentUserId);
-    formData.append('markup_rubles', markupInput.value || 0);
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('user_id', currentUserId);
+            formData.append('markup_rubles', markupInput.value || 0);
 
-    btn.innerText = 'Загрузка...';
-    btn.disabled = true;
+            btn.innerText = 'Загрузка...';
+            btn.disabled = true;
 
-    try {
-        const response = await fetch('/api/upload-pdf', { 
-            method: 'POST', 
-            body: formData 
-        });
-        
-        const result = await response.json().catch(() => ({}));
+            try {
+                const response = await fetch('/api/upload-pdf', { 
+                    method: 'POST', 
+                    body: formData 
+                });
+                
+                const result = await response.json().catch(() => ({}));
 
-        if (response.ok && result.added !== undefined) {
-            alert(`Успешно добавлено товаров: ${result.added}`);
-            fileInput.value = '';
-            fetchProducts();
-        } else {
-            alert(`Ошибка (${response.status}): ${result.error || 'Не удалось распарсить PDF'}`);
+                if (response.ok && result.added !== undefined) {
+                    alert(`Успешно добавлено товаров: ${result.added}`);
+                    fileInput.value = '';
+                    fetchProducts();
+                } else {
+                    alert(`Ошибка (${response.status}): ${result.error || 'Не удалось распарсить PDF'}`);
+                }
+            } catch (e) {
+                alert('Ошибка сети: ' + e.message);
+            } finally {
+                btn.innerText = 'Загрузить прайс';
+                btn.disabled = false;
+            }
         }
-    } catch (e) {
-        alert('Ошибка сети: ' + e.message);
-    } finally {
-        btn.innerText = 'Загрузить прайс';
-        btn.disabled = false;
-    }
-}
 
-fetchProducts();
-fetchUserStats();
-</script>
-
+        fetchProducts();
+        fetchUserStats();
+    </script>
 </body>
 </html>
