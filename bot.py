@@ -59,6 +59,14 @@ def init_db():
                 image_url TEXT DEFAULT ''
             );
         """)
+        # Миграция: добавляем недостающие колонки в таблицу products, если их нет
+        for col_def in ["quantity INTEGER DEFAULT 0", "image_url TEXT DEFAULT ''"]:
+            try:
+                cur.execute(f"ALTER TABLE products ADD COLUMN {col_def};")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                 id SERIAL PRIMARY KEY,
@@ -70,12 +78,20 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Миграция: добавляем недостающие колонки в таблицу orders, если их нет
+        try:
+            cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new';")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         cur.execute("SELECT COUNT(*) FROM products;")
         row = cur.fetchone()
         count = row['count'] if isinstance(row, dict) else row[0]
         if count == 0:
             cur.execute("INSERT INTO products (name, price, quantity) VALUES (%s, %s, %s)", ("Картридж", 500, 10))
             cur.execute("INSERT INTO products (name, price, quantity) VALUES (%s, %s, %s)", ("Жидкость", 400, 15))
+            conn.commit()
     else:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS products (
@@ -103,6 +119,11 @@ def init_db():
             pass
 
         try:
+            cur.execute("ALTER TABLE products ADD COLUMN quantity INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
             cur.execute("ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
@@ -112,8 +133,8 @@ def init_db():
         if count == 0:
             cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Картридж", 500, 10))
             cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Жидкость", 400, 15))
+        conn.commit()
     
-    conn.commit()
     cur.close()
     conn.close()
 
@@ -265,11 +286,45 @@ def handle_all_callbacks(call):
 def get_products():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM products")
+    cur.execute("SELECT * FROM products ORDER BY id DESC")
     products = [dict(row) for row in cur.fetchall()]
     cur.close()
     conn.close()
     return jsonify(products)
+
+@flask_app.route('/api/user-stats', methods=['GET'])
+def get_user_stats():
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({'orders_count': 0, 'total_spent': 0})
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if DATABASE_URL:
+            cur.execute(
+                "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = %s AND status != 'cancelled'",
+                (int(user_id),)
+            )
+            row = cur.fetchone()
+            orders_count = row['count'] if row else 0
+            total_spent = float(row['total']) if row else 0.0
+        else:
+            cur.execute(
+                "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status != 'cancelled'",
+                (int(user_id),)
+            )
+            row = cur.fetchone()
+            orders_count = row['count'] if row else 0
+            total_spent = float(row['total']) if row else 0.0
+
+        cur.close()
+        conn.close()
+        return jsonify({'orders_count': orders_count, 'total_spent': int(total_spent)})
+    except Exception as e:
+        print(f"Ошибка получения статистики пользователя: {e}", flush=True)
+        return jsonify({'orders_count': 0, 'total_spent': 0})
 
 @flask_app.route('/api/upload-image', methods=['POST'])
 def upload_image():
@@ -292,6 +347,7 @@ def upload_image():
         print(f"Ошибка при загрузке фото: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
 
+@flask_app.route('/api/products', methods=['POST'])
 @flask_app.route('/api/update-product', methods=['POST'])
 @flask_app.route('/api/add-product', methods=['POST'])
 def update_or_add_product():
