@@ -228,20 +228,6 @@ def handle_all_callbacks(call):
             conn.close()
             return
 
-        try:
-            lines = items_desc.strip().split('\n')
-            for line in lines:
-                match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
-                if match:
-                    prod_name = match.group(1).strip()
-                    prod_count = int(match.group(2))
-                    if DATABASE_URL:
-                        db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE name = ?", (prod_count, prod_name))
-                    else:
-                        db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE name = ?", (prod_count, prod_name))
-        except Exception as e:
-            print(f"Ошибка списания остатков: {e}")
-
         db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
         conn.commit()
 
@@ -261,6 +247,18 @@ def handle_all_callbacks(call):
             cur.close()
             conn.close()
             return
+
+        # Возврат товара на склад, если админ отменяет заказ
+        try:
+            lines = items_desc.strip().split('\n')
+            for line in lines:
+                match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
+                if match:
+                    prod_name = match.group(1).strip()
+                    prod_count = int(match.group(2))
+                    db_execute(cur, "UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+        except Exception as e:
+            print(f"Ошибка возврата остатков: {e}")
 
         db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
         conn.commit()
@@ -285,7 +283,8 @@ def handle_all_callbacks(call):
 def get_products():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM products ORDER BY id DESC")
+    # Показываем только товары с наличием > 0
+    cur.execute("SELECT * FROM products WHERE quantity > 0 ORDER BY id DESC")
     products = [dict(row) for row in cur.fetchall()]
     cur.close()
     conn.close()
@@ -507,17 +506,30 @@ def create_order():
         items_text = ""
         items_client_text = ""
         
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
         for item in cart:
             price = int(item.get('price', 0))
             qty = int(item.get('cartQuantity', item.get('quantity', 1)))
             name = item.get('name', 'Товар')
+            p_id = item.get('id')
             
             total += price * qty
             items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
             items_client_text += f"• {name} x {qty} шт.\n"
             
-        conn = get_db_connection()
-        cur = conn.cursor()
+            # Автоматическое списание со склада сразу при покупке
+            if p_id:
+                if DATABASE_URL:
+                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
+                else:
+                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE id = ?", (qty, p_id))
+            else:
+                if DATABASE_URL:
+                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE name = ?", (qty, name))
+                else:
+                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE name = ?", (qty, name))
         
         if DATABASE_URL:
             cur.execute(
