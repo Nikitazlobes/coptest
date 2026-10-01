@@ -248,7 +248,7 @@ def handle_all_callbacks(call):
             conn.close()
             return
 
-        # Возврат товара на склад, если админ отменяет заказ
+        # Возврат товара на склад при отмене заказа администратором
         try:
             lines = items_desc.strip().split('\n')
             for line in lines:
@@ -283,7 +283,7 @@ def handle_all_callbacks(call):
 def get_products():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Показываем только товары с наличием > 0
+    # Выдаем только товары, у которых остаток > 0
     cur.execute("SELECT * FROM products WHERE quantity > 0 ORDER BY id DESC")
     products = [dict(row) for row in cur.fetchall()]
     cur.close()
@@ -502,12 +502,42 @@ def create_order():
         if not cart:
             return jsonify({'success': False, 'error': 'Корзина пуста'}), 400
             
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # === ПРОВЕРКА НАЛИЧИЯ ТО В КАТАЛОГЕ ===
+        for item in cart:
+            p_id = item.get('id')
+            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
+            name = item.get('name', 'Товар')
+
+            if p_id:
+                db_execute(cur, "SELECT name, quantity FROM products WHERE id = ?", (p_id,))
+            else:
+                db_execute(cur, "SELECT name, quantity FROM products WHERE name = ?", (name,))
+                
+            prod = cur.fetchone()
+            if prod:
+                stock = prod['quantity'] if isinstance(prod, dict) else prod[1]
+                p_name = prod['name'] if isinstance(prod, dict) else prod[0]
+                if qty > stock:
+                    cur.close()
+                    conn.close()
+                    return jsonify({
+                        'success': False, 
+                        'error': f"Товара '{p_name}' осталось только {stock} шт."
+                    }), 400
+            else:
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'error': f"Товар '{name}' не найден в базе"
+                }), 400
+
         total = 0
         items_text = ""
         items_client_text = ""
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
         
         for item in cart:
             price = int(item.get('price', 0))
@@ -519,7 +549,7 @@ def create_order():
             items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
             items_client_text += f"• {name} x {qty} шт.\n"
             
-            # Автоматическое списание со склада сразу при покупке
+            # Автоматическое списание со склада
             if p_id:
                 if DATABASE_URL:
                     db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
