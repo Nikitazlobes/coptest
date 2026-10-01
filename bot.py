@@ -248,17 +248,18 @@ def handle_all_callbacks(call):
             conn.close()
             return
 
-        # Возврат товара на склад при отмене заказа администратором
+        # Надежный возврат товара на склад при отмене заказа администратором
         try:
             lines = items_desc.strip().split('\n')
             for line in lines:
-                match = re.search(r'•\s+(.*?)\s+x\s+(\d+)\s+шт\.', line)
+                match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
                 if match:
                     prod_name = match.group(1).strip()
                     prod_count = int(match.group(2))
                     db_execute(cur, "UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+                    print(f"Возврат товара на склад: {prod_name} +{prod_count} шт.", flush=True)
         except Exception as e:
-            print(f"Ошибка возврата остатков: {e}")
+            print(f"Ошибка возврата остатков: {e}", flush=True)
 
         db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
         conn.commit()
@@ -283,7 +284,6 @@ def handle_all_callbacks(call):
 def get_products():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Выдаем все товары (чтобы видеть и те, что закончились, со статусом "нет в наличии")
     cur.execute("SELECT * FROM products ORDER BY id DESC")
     products = [dict(row) for row in cur.fetchall()]
     cur.close()
