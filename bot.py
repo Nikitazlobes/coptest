@@ -283,8 +283,8 @@ def handle_all_callbacks(call):
 def get_products():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Выдаем только товары, у которых остаток > 0
-    cur.execute("SELECT * FROM products WHERE quantity > 0 ORDER BY id DESC")
+    # Выдаем все товары (чтобы видеть и те, что закончились, со статусом "нет в наличии")
+    cur.execute("SELECT * FROM products ORDER BY id DESC")
     products = [dict(row) for row in cur.fetchall()]
     cur.close()
     conn.close()
@@ -505,7 +505,7 @@ def create_order():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # === ПРОВЕРКА НАЛИЧИЯ ТО В КАТАЛОГЕ ===
+        # === ПРОВЕРКА НАЛИЧИЯ В КАТАЛОГЕ ===
         for item in cart:
             p_id = item.get('id')
             qty = int(item.get('cartQuantity', item.get('quantity', 1)))
@@ -549,7 +549,7 @@ def create_order():
             items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
             items_client_text += f"• {name} x {qty} шт.\n"
             
-            # Автоматическое списание со склада
+            # Автоматическое списание со склада с защитой от ухода в минус
             if p_id:
                 if DATABASE_URL:
                     db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
@@ -574,6 +574,7 @@ def create_order():
             )
             order_id = cur.lastrowid
 
+        # Фиксируем изменения в базе данных
         conn.commit()
         cur.close()
         conn.close()
