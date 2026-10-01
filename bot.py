@@ -12,7 +12,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 # --- НАСТРОЙКИ ---
-TOKEN = os.environ.get('BOT_TOKEN', '8855611435:AAEtqssUoPKmbntEUEMMjyuv8S_CQ8ecuTY')
+TOKEN = os.environ.get('BOT_TOKEN', '')
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -30,11 +30,9 @@ CORS(flask_app)
 
 def get_db_connection():
     if DATABASE_URL:
-        # Для Render всегда подключаемся к PostgreSQL
         url = DATABASE_URL.replace("postgres://", "postgresql://")
         return psycopg2.connect(url, cursor_factory=RealDictCursor)
     else:
-        # Резервный SQLite для локальной разработки
         conn = sqlite3.connect(DB_NAME)
         conn.row_factory = sqlite3.Row
         return conn
@@ -59,7 +57,6 @@ def init_db():
                 image_url TEXT DEFAULT ''
             );
         """)
-        # Миграция: добавляем недостающие колонки в таблицу products, если их нет
         for col_def in ["quantity INTEGER DEFAULT 0", "image_url TEXT DEFAULT ''"]:
             try:
                 cur.execute(f"ALTER TABLE products ADD COLUMN {col_def};")
@@ -78,7 +75,6 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        # Миграция: добавляем недостающие колонки в таблицу orders, если их нет
         try:
             cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new';")
             conn.commit()
@@ -239,7 +235,10 @@ def handle_all_callbacks(call):
                 if match:
                     prod_name = match.group(1).strip()
                     prod_count = int(match.group(2))
-                    db_execute(cur, "UPDATE products SET quantity = quantity - ? WHERE name = ?", (prod_count, prod_name))
+                    if DATABASE_URL:
+                        db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE name = ?", (prod_count, prod_name))
+                    else:
+                        db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE name = ?", (prod_count, prod_name))
         except Exception as e:
             print(f"Ошибка списания остатков: {e}")
 
@@ -302,22 +301,18 @@ def get_user_stats():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        if DATABASE_URL:
-            cur.execute(
-                "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = %s AND status != 'cancelled'",
-                (int(user_id),)
-            )
-            row = cur.fetchone()
-            orders_count = row['count'] if row else 0
-            total_spent = float(row['total']) if row else 0.0
+        db_execute(
+            cur,
+            "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status != 'cancelled'",
+            (int(user_id),)
+        )
+        row = cur.fetchone()
+        if isinstance(row, dict):
+            orders_count = row.get('count', 0)
+            total_spent = float(row.get('total', 0))
         else:
-            cur.execute(
-                "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status != 'cancelled'",
-                (int(user_id),)
-            )
-            row = cur.fetchone()
-            orders_count = row['count'] if row else 0
-            total_spent = float(row['total']) if row else 0.0
+            orders_count = row[0] if row else 0
+            total_spent = float(row[1]) if row else 0.0
 
         cur.close()
         conn.close()
@@ -461,7 +456,15 @@ def api_upload_pdf():
                     continue
 
                 if len(clean_name) > 2:
-                    db_execute(cur, "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, quantity))
+                    db_execute(cur, "SELECT id, quantity FROM products WHERE name = ?", (clean_name,))
+                    existing = cur.fetchone()
+                    if existing:
+                        p_id = existing['id'] if isinstance(existing, dict) else existing[0]
+                        p_qty = existing['quantity'] if isinstance(existing, dict) else existing[1]
+                        new_qty = (p_qty or 0) + quantity
+                        db_execute(cur, "UPDATE products SET price = ?, quantity = ? WHERE id = ?", (final_price, new_qty, p_id))
+                    else:
+                        db_execute(cur, "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, quantity))
                     added_count += 1
             except ValueError:
                 pass
@@ -470,7 +473,7 @@ def api_upload_pdf():
         cur.close()
         conn.close()
 
-        print(f"Успешно спарсено и добавлено товаров: {added_count}", flush=True)
+        print(f"Успешно спарсено и добавлено/обновлено товаров: {added_count}", flush=True)
         return jsonify({'success': True, 'added': added_count})
 
     except Exception as e:
