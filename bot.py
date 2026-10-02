@@ -56,19 +56,15 @@ def detect_category(product_name: str) -> str:
     """ Автоматическое определение категории по ключевым словам """
     name = product_name.lower()
     
-    # Жидкости
     if any(w in name for w in ['жидкость', 'жижа', 'жижка', 'liq', 'liquid', 'salt', 'солевая', 'щелочь', 'хард', 'hard']):
         return 'Жидкости'
     
-    # Картриджи и испарители
     if any(w in name for w in ['картридж', 'катридж', 'испаритель', 'испар', 'coil', 'испарик', 'бак', 'карт', 'сетка']):
         return 'Картриджи и Испарители'
         
-    # Устройства / ПОДы
     if any(w in name for w in ['pod', 'под', 'набор', 'kit', 'устройство', 'пасито', 'pasito', 'charon', 'чарон', 'xros', 'aegis', 'knight', 'hero']):
         return 'Устройства'
         
-    # Одноразовые устройства
     if any(w in name for w in ['одноразка', 'одноразовая', 'puff', 'тяг', 'bar']):
         return 'Одноразки'
 
@@ -224,7 +220,6 @@ def send_welcome(message):
     user_id = message.from_user.id
     username = message.from_user.username or "Неизвестен"
 
-    # Сохраняем пользователя в базу для рассылки
     conn = get_db_connection()
     cur = conn.cursor()
     if DATABASE_URL:
@@ -341,14 +336,55 @@ def handle_all_callbacks(call):
 
 # --- API ЭНДПОИНТЫ ---
 
+@flask_app.route('/api/user-orders', methods=['GET'])
+@flask_app.route('/api/orders', methods=['GET'])
+def get_user_orders():
+    """ Получение истории заказов пользователя или всех заказов """
+    try:
+        user_id = request.args.get('user_id')
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if user_id:
+            db_execute(cur, "SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", (int(user_id),))
+        else:
+            db_execute(cur, "SELECT * FROM orders ORDER BY id DESC")
+
+        rows = cur.fetchall()
+        orders = []
+        for r in rows:
+            if isinstance(r, dict):
+                orders.append({
+                    'id': r.get('id'),
+                    'user_id': r.get('user_id'),
+                    'username': r.get('username'),
+                    'items': r.get('items'),
+                    'total': float(r.get('total', 0)),
+                    'status': r.get('status', 'new'),
+                    'created_at': str(r.get('created_at', ''))
+                })
+            else:
+                orders.append({
+                    'id': r[0],
+                    'user_id': r[1],
+                    'username': r[2],
+                    'items': r[3],
+                    'total': float(r[4]),
+                    'status': r[5],
+                    'created_at': str(r[6]) if len(r) > 6 else ''
+                })
+
+        cur.close()
+        conn.close()
+        return jsonify(orders)
+    except Exception as e:
+        print(f"Ошибка получения заказов: {e}", flush=True)
+        return jsonify([])
+
 @flask_app.route('/api/broadcast', methods=['POST'])
 def send_broadcast():
-    """ Отправка рассылки всем пользователям бота """
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            data = request.form.to_dict()
-
+        data = request.get_json(silent=True) or request.form.to_dict()
         message_text = data.get('message')
         if not message_text:
             return jsonify({'success': False, 'error': 'Текст сообщения не может быть пустым'}), 400
@@ -360,9 +396,7 @@ def send_broadcast():
         cur.close()
         conn.close()
 
-        sent_count = 0
-        fail_count = 0
-
+        sent_count, fail_count = 0, 0
         markup = telebot.types.InlineKeyboardMarkup()
         web_app = telebot.types.WebAppInfo(url=RENDER_URL)
         markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть каталог", web_app=web_app))
@@ -378,9 +412,7 @@ def send_broadcast():
                 fail_count += 1
 
         return jsonify({'success': True, 'sent': sent_count, 'failed': fail_count})
-
     except Exception as e:
-        print(f"Ошибка при рассылке: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @flask_app.route('/api/products', methods=['GET'])
@@ -416,10 +448,7 @@ def upload_image():
 @flask_app.route('/api/add-product', methods=['POST'])
 def update_or_add_product():
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            data = request.form.to_dict()
-
+        data = request.get_json(silent=True) or request.form.to_dict()
         product_id = data.get('id')
         name = data.get('name')
         price = data.get('price')
@@ -451,7 +480,6 @@ def update_or_add_product():
         conn.commit()
         cur.close()
         conn.close()
-
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -459,10 +487,7 @@ def update_or_add_product():
 @flask_app.route('/api/delete-product', methods=['POST'])
 def delete_product():
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            data = request.form.to_dict()
-
+        data = request.get_json(silent=True) or request.form.to_dict()
         product_id = data.get('id')
         if not product_id:
             return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
@@ -489,7 +514,6 @@ def api_upload_pdf():
             return jsonify({'error': 'Файл не выбран'}), 400
 
         markup_rubles = int(request.form.get('markup_rubles', 0))
-        
         pdf_reader = PyPDF2.PdfReader(file)
         full_text = ""
         for page in pdf_reader.pages:
@@ -547,7 +571,6 @@ def api_upload_pdf():
         conn.close()
 
         return jsonify({'success': True, 'added': added_count})
-
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -603,9 +626,7 @@ def clear_admin_stats():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        set_setting(cur, 'manual_revenue', '0')
-        set_setting(cur, 'manual_items_sold', '0')
-        set_setting(cur, 'manual_orders_count', '0')
+        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
         conn.commit()
         cur.close()
         conn.close()
@@ -681,13 +702,11 @@ def create_order():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Сохранение пользователя в систему
         if DATABASE_URL:
             db_execute(cur, "INSERT INTO users (user_id, username) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username", (user_id, username))
         else:
             db_execute(cur, "INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
 
-        # Проверка остатков
         for item in cart:
             p_id = item.get('id')
             qty = int(item.get('cartQuantity', item.get('quantity', 1)))
@@ -738,14 +757,14 @@ def create_order():
         
         if DATABASE_URL:
             cur.execute(
-                "INSERT INTO orders (user_id, username, items, total) VALUES (%s, %s, %s, %s) RETURNING id",
-                (user_id, username, items_text, total)
+                "INSERT INTO orders (user_id, username, items, total, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (user_id, username, items_text, total, 'new')
             )
             order_id = cur.fetchone()['id']
         else:
             cur.execute(
-                "INSERT INTO orders (user_id, username, items, total) VALUES (?, ?, ?, ?)",
-                (user_id, username, items_text, total)
+                "INSERT INTO orders (user_id, username, items, total, status) VALUES (?, ?, ?, ?, ?)",
+                (user_id, username, items_text, total, 'new')
             )
             order_id = cur.lastrowid
 
