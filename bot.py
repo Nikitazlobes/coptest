@@ -43,6 +43,17 @@ def db_execute(cur, sql, params=()):
         sql = sql.replace('?', '%s')
     cur.execute(sql, params)
 
+def get_setting(cur, key, default=None):
+    db_execute(cur, "SELECT value FROM settings WHERE key = ?", (key,))
+    row = cur.fetchone()
+    if row:
+        return row['value'] if isinstance(row, dict) else row[0]
+    return default
+
+def set_setting(cur, key, value):
+    db_execute(cur, "DELETE FROM settings WHERE key = ?", (key,))
+    db_execute(cur, "INSERT INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
+
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -81,6 +92,14 @@ def init_db():
         except Exception:
             conn.rollback()
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+        """)
+        conn.commit()
+
         cur.execute("SELECT COUNT(*) FROM products;")
         row = cur.fetchone()
         count = row['count'] if isinstance(row, dict) else row[0]
@@ -107,6 +126,12 @@ def init_db():
                 total REAL,
                 status TEXT DEFAULT 'new',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
             )
         """)
         try:
@@ -279,6 +304,94 @@ def handle_all_callbacks(call):
     conn.close()
 
 # --- API МАГАЗИНА ---
+
+@flask_app.route('/api/admin-stats', methods=['GET'])
+def get_admin_stats():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        m_rev = get_setting(cur, 'manual_revenue', None)
+        m_items = get_setting(cur, 'manual_items_sold', None)
+        m_orders = get_setting(cur, 'manual_orders_count', None)
+
+        if m_rev is not None and m_items is not None and m_orders is not None:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'total_revenue': int(m_rev),
+                'items_sold': int(m_items),
+                'total_orders': int(m_orders)
+            })
+
+        db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
+        rows = cur.fetchall()
+
+        total_orders = len(rows)
+        total_revenue = 0
+        items_sold = 0
+
+        for row in rows:
+            r_total = row['total'] if isinstance(row, dict) else row[1]
+            r_items = row['items'] if isinstance(row, dict) else row[0]
+            
+            total_revenue += float(r_total or 0)
+            if r_items:
+                matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
+                for m in matches:
+                    items_sold += int(m)
+
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            'total_revenue': int(total_revenue),
+            'items_sold': items_sold,
+            'total_orders': total_orders
+        })
+    except Exception as e:
+        print(f"Ошибка админ-статистики: {e}", flush=True)
+        return jsonify({'total_revenue': 0, 'items_sold': 0, 'total_orders': 0}), 500
+
+@flask_app.route('/api/admin-stats/clear', methods=['POST'])
+def clear_admin_stats():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        set_setting(cur, 'manual_revenue', '0')
+        set_setting(cur, 'manual_items_sold', '0')
+        set_setting(cur, 'manual_orders_count', '0')
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Ошибка сброса статистики: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/admin-stats/edit', methods=['POST'])
+def edit_admin_stats():
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            data = request.form.to_dict()
+
+        total_revenue = data.get('total_revenue', 0)
+        items_sold = data.get('items_sold', 0)
+        total_orders = data.get('total_orders', 0)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        set_setting(cur, 'manual_revenue', str(int(total_revenue)))
+        set_setting(cur, 'manual_items_sold', str(int(items_sold)))
+        set_setting(cur, 'manual_orders_count', str(int(total_orders)))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Ошибка редактирования статистики: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @flask_app.route('/api/products', methods=['GET'])
 def get_products():
