@@ -209,6 +209,14 @@
             background: rgba(255, 255, 255, 0.08);
             box-shadow: none;
             border: 1px solid var(--card-border);
+            color: var(--text-primary);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--danger-color);
+            box-shadow: none;
         }
 
         .btn-disabled {
@@ -318,7 +326,7 @@
             font-weight: 600;
         }
 
-        #edit-modal, #product-modal {
+        #edit-modal, #product-modal, #stats-modal {
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -329,6 +337,7 @@
             align-items: center;
             padding: 16px;
         }
+        
         .modal-content {
             background: #111827;
             border: 1px solid var(--card-border);
@@ -339,6 +348,18 @@
             max-height: 90vh;
             overflow-y: auto;
             animation: fadeIn 0.3s ease;
+        }
+
+        .admin-stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .admin-stat-row:last-child {
+            border-bottom: none;
         }
     </style>
 </head>
@@ -402,6 +423,32 @@
     <!-- Админка -->
     <div id="tab-admin" class="tab-content">
         <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 14px;">Панель управления</h2>
+        
+        <!-- Блок статистики продаж -->
+        <div class="admin-card" style="background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8));">
+            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc; display: flex; align-items: center; gap: 8px;">
+                <span>📊 Статистика продаж</span>
+            </h3>
+            
+            <div class="admin-stat-row">
+                <span style="color: var(--text-secondary); font-size: 13px;">Общая выручка:</span>
+                <strong id="admin-total-revenue" style="font-size: 16px; color: #10b981;">0 ₽</strong>
+            </div>
+            <div class="admin-stat-row">
+                <span style="color: var(--text-secondary); font-size: 13px;">Продано товаров:</span>
+                <strong id="admin-items-sold" style="font-size: 16px; color: #38bdf8;">0 шт.</strong>
+            </div>
+            <div class="admin-stat-row">
+                <span style="color: var(--text-secondary); font-size: 13px;">Успешных заказов:</span>
+                <strong id="admin-total-orders" style="font-size: 16px; color: #c084fc;">0</strong>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px;">
+                <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 13px;" onclick="openEditStatsModal()">✏️ Изменить</button>
+                <button class="btn btn-danger" style="flex: 1; padding: 8px; font-size: 13px;" onclick="clearAdminStats()">🗑 Очистить</button>
+            </div>
+        </div>
+
         <div class="admin-card">
             <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">➕ Добавить товар</h3>
             <div class="form-group">
@@ -456,7 +503,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно редактирования -->
+    <!-- Модальное окно редактирования товара -->
     <div id="edit-modal">
         <div class="modal-content">
             <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #a5b4fc;">✏️ Редактировать товар</h3>
@@ -485,6 +532,29 @@
             <div style="display: flex; gap: 8px; margin-top: 16px;">
                 <button class="btn btn-secondary" onclick="closeEditModal()">Отмена</button>
                 <button class="btn" onclick="saveEditedProduct()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования статистики -->
+    <div id="stats-modal">
+        <div class="modal-content">
+            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #a5b4fc;">📊 Редактировать статистику</h3>
+            <div class="form-group">
+                <label>Выручка (₽)</label>
+                <input type="number" id="stat-edit-revenue" placeholder="0">
+            </div>
+            <div class="form-group">
+                <label>Продано товаров (шт)</label>
+                <input type="number" id="stat-edit-items" placeholder="0">
+            </div>
+            <div class="form-group">
+                <label>Всего заказов</label>
+                <input type="number" id="stat-edit-orders" placeholder="0">
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button class="btn btn-secondary" onclick="closeEditStatsModal()">Отмена</button>
+                <button class="btn" onclick="saveEditedStats()">Сохранить</button>
             </div>
         </div>
     </div>
@@ -558,6 +628,84 @@
                     document.getElementById('home-total-spent').innerText = (data.total_spent || 0) + ' ₽';
                 }
             } catch (e) {}
+        }
+
+        // --- ЛОГИКА АДМИН-СТАТИСТИКИ ---
+
+        async function fetchAdminStats() {
+            if (currentUserId !== ADMIN_ID) return;
+            try {
+                const response = await fetch('/api/admin-stats');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('admin-total-revenue').innerText = (data.total_revenue || 0) + ' ₽';
+                    document.getElementById('admin-items-sold').innerText = (data.items_sold || 0) + ' шт.';
+                    document.getElementById('admin-total-orders').innerText = data.total_orders || 0;
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки статистики админа:', e);
+            }
+        }
+
+        async function clearAdminStats() {
+            if (!confirm('Вы точно хотите обнулить всю статистику продаж?')) return;
+            try {
+                const response = await fetch('/api/admin-stats/clear', { method: 'POST' });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    showAlertMessage('Статистика успешно сброшена!');
+                    fetchAdminStats();
+                } else {
+                    showAlertMessage('Ошибка при очистке статистики');
+                }
+            } catch (e) {
+                showAlertMessage('Ошибка сети при очистке статистики');
+            }
+        }
+
+        function openEditStatsModal() {
+            const currentRev = parseInt(document.getElementById('admin-total-revenue').innerText) || 0;
+            const currentItems = parseInt(document.getElementById('admin-items-sold').innerText) || 0;
+            const currentOrders = parseInt(document.getElementById('admin-total-orders').innerText) || 0;
+
+            document.getElementById('stat-edit-revenue').value = currentRev;
+            document.getElementById('stat-edit-items').value = currentItems;
+            document.getElementById('stat-edit-orders').value = currentOrders;
+
+            document.getElementById('stats-modal').style.display = 'flex';
+        }
+
+        function closeEditStatsModal() {
+            document.getElementById('stats-modal').style.display = 'none';
+        }
+
+        async function saveEditedStats() {
+            const revenue = parseInt(document.getElementById('stat-edit-revenue').value) || 0;
+            const items = parseInt(document.getElementById('stat-edit-items').value) || 0;
+            const orders = parseInt(document.getElementById('stat-edit-orders').value) || 0;
+
+            try {
+                const response = await fetch('/api/admin-stats/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        total_revenue: revenue,
+                        items_sold: items,
+                        total_orders: orders
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    closeEditStatsModal();
+                    fetchAdminStats();
+                    showAlertMessage('Статистика обновлена!');
+                } else {
+                    showAlertMessage('Ошибка сохранения статистики');
+                }
+            } catch (e) {
+                showAlertMessage('Ошибка сети при сохранении статистики');
+            }
         }
 
         async function uploadImageFile(fileInputId) {
@@ -806,7 +954,7 @@
             } catch (e) {}
         }
 
-        // --- ЛОГИКА КОРЗИНЫ С ПРОВЕРКОЙ ОСТАТКОВ ---
+        // --- ЛОГИКА КОРЗИНЫ ---
 
         function addToCart(id, buttonElement) {
             const item = products.find(p => p.id === id);
@@ -931,7 +1079,6 @@
             });
             const cartList = Object.values(itemsMap);
 
-            // Финальная проверка остатка перед отправкой
             for (let cItem of cartList) {
                 const prod = products.find(p => p.id === cItem.id);
                 if (prod && cItem.cartQuantity > (prod.quantity || 0)) {
@@ -960,6 +1107,7 @@
                     updateCart();
                     fetchUserStats();
                     fetchProducts();
+                    fetchAdminStats();
                     switchTab('home', document.querySelectorAll('.nav-item')[0]);
                 } else {
                     const errJson = await response.json().catch(() => ({}));
@@ -977,6 +1125,10 @@
             document.getElementById('tab-' + tabId).classList.add('active');
             if (el) el.classList.add('active');
             window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (tabId === 'admin') {
+                fetchAdminStats();
+            }
         }
 
         async function uploadPdfCatalog() {
@@ -1022,6 +1174,7 @@
 
         fetchProducts();
         fetchUserStats();
+        fetchAdminStats();
     </script>
 </body>
 </html>
