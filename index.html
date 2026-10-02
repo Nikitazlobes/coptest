@@ -9,6 +9,7 @@
         :root {
             --bg-color: #080c14;
             --card-bg: rgba(21, 28, 44, 0.7);
+            --card-solid: #111827; /* Твердый фон для карточек без тяжелого blur */
             --card-border: rgba(255, 255, 255, 0.08);
             --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
             --accent-hover: #4f46e5;
@@ -136,15 +137,17 @@
             color: var(--text-primary);
         }
 
+        /* --- ОПТИМИЗИРОВАННАЯ СЕТКА КАТАЛОГА --- */
         .product-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
             gap: 12px;
+            contain: layout style; /* Изолирует перерисовывание для плавности */
         }
 
+        /* --- ОПТИМИЗИРОВАННАЯ КАРТОЧКА (БЕЗ BACKDROP-FILTER BLUR) --- */
         .product-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
+            background: var(--card-solid); 
             border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 12px;
@@ -152,11 +155,15 @@
             flex-direction: column;
             justify-content: space-between;
             cursor: pointer;
-            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+            
+            /* Аппаратное ускорение на GPU для устранения фризов */
+            transform: translateZ(0);
+            will-change: transform;
+            transition: transform 0.15s ease;
         }
 
         .product-card:active {
-            transform: scale(0.98);
+            transform: scale(0.97) translateZ(0);
         }
 
         .product-img {
@@ -166,6 +173,7 @@
             border-radius: 12px;
             margin-bottom: 8px;
             background: #0b0f19;
+            content-visibility: auto; /* Браузер оптимизирует рендеринг незагруженных фото */
         }
 
         .product-title {
@@ -630,8 +638,6 @@
             } catch (e) {}
         }
 
-        // --- ЛОГИКА АДМИН-СТАТИСТИКИ ---
-
         async function fetchAdminStats() {
             if (currentUserId !== ADMIN_ID) return;
             try {
@@ -756,7 +762,8 @@
                     `;
                 }
 
-                const imgHtml = p.image_url ? `<img src="${p.image_url}" class="product-img" alt="${p.name}">` : '';
+                /* Ленивая загрузка для картинок loading="lazy" */
+                const imgHtml = p.image_url ? `<img src="${p.image_url}" class="product-img" loading="lazy" alt="${p.name}">` : '';
                 const stock = p.quantity || 0;
                 const isOutOfStock = stock <= 0;
 
@@ -953,8 +960,6 @@
                 }
             } catch (e) {}
         }
-
-        // --- ЛОГИКА КОРЗИНЫ ---
 
         function addToCart(id, buttonElement) {
             const item = products.find(p => p.id === id);
