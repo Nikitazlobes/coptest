@@ -92,13 +92,6 @@ def init_db():
                 category TEXT DEFAULT 'Разное'
             );
         """)
-        for col_def in ["quantity INTEGER DEFAULT 0", "image_url TEXT DEFAULT ''", "category TEXT DEFAULT 'Разное'"]:
-            try:
-                cur.execute(f"ALTER TABLE products ADD COLUMN {col_def};")
-                conn.commit()
-            except Exception:
-                conn.rollback()
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                 id SERIAL PRIMARY KEY,
@@ -110,12 +103,6 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        try:
-            cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new';")
-            conn.commit()
-        except Exception:
-            conn.rollback()
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -158,26 +145,6 @@ def init_db():
                 value TEXT
             )
         """)
-        try:
-            cur.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'new'")
-        except sqlite3.OperationalError:
-            pass
-
-        try:
-            cur.execute("ALTER TABLE products ADD COLUMN category TEXT DEFAULT 'Разное'")
-        except sqlite3.OperationalError:
-            pass
-
-        try:
-            cur.execute("ALTER TABLE products ADD COLUMN quantity INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass
-
-        try:
-            cur.execute("ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
-
         conn.commit()
     
     cur.close()
@@ -274,11 +241,11 @@ def handle_all_callbacks(call):
         conn.close()
         return
 
-    current_status = order['status']
-    username = order['username']
-    user_id = order['user_id']
-    items_desc = order['items']
-    total = order['total']
+    current_status = order['status'] if isinstance(order, dict) else order[5]
+    username = order['username'] if isinstance(order, dict) else order[2]
+    user_id = order['user_id'] if isinstance(order, dict) else order[1]
+    items_desc = order['items'] if isinstance(order, dict) else order[3]
+    total = order['total'] if isinstance(order, dict) else order[4]
 
     if action == 'confirm':
         if current_status == 'confirmed':
@@ -287,6 +254,8 @@ def handle_all_callbacks(call):
             return
 
         db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
+        # При подтверждении удаляем ручной оверрайд статистики, чтобы пересчитать реальные цифры
+        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
         conn.commit()
 
         try:
@@ -307,7 +276,7 @@ def handle_all_callbacks(call):
             return
 
         try:
-            lines = items_desc.strip().split('\n')
+            lines = str(items_desc).strip().split('\n')
             for line in lines:
                 match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
                 if match:
@@ -339,40 +308,49 @@ def handle_all_callbacks(call):
 @flask_app.route('/api/user-orders', methods=['GET'])
 @flask_app.route('/api/orders', methods=['GET'])
 def get_user_orders():
-    """ Получение истории заказов пользователя или всех заказов """
+    """ Получение истории заказов """
     try:
-        user_id = request.args.get('user_id')
+        user_id_raw = request.args.get('user_id')
         conn = get_db_connection()
         cur = conn.cursor()
 
-        if user_id:
-            db_execute(cur, "SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", (int(user_id),))
+        if user_id_raw and str(user_id_raw).isdigit():
+            db_execute(cur, "SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", (int(user_id_raw),))
         else:
             db_execute(cur, "SELECT * FROM orders ORDER BY id DESC")
 
         rows = cur.fetchall()
         orders = []
         for r in rows:
-            if isinstance(r, dict):
-                orders.append({
-                    'id': r.get('id'),
-                    'user_id': r.get('user_id'),
-                    'username': r.get('username'),
-                    'items': r.get('items'),
-                    'total': float(r.get('total', 0)),
-                    'status': r.get('status', 'new'),
-                    'created_at': str(r.get('created_at', ''))
-                })
-            else:
-                orders.append({
-                    'id': r[0],
-                    'user_id': r[1],
-                    'username': r[2],
-                    'items': r[3],
-                    'total': float(r[4]),
-                    'status': r[5],
-                    'created_at': str(r[6]) if len(r) > 6 else ''
-                })
+            r_dict = dict(r) if isinstance(r, dict) else {
+                'id': r[0], 'user_id': r[1], 'username': r[2],
+                'items': r[3], 'total': r[4], 'status': r[5],
+                'created_at': str(r[6]) if len(r) > 6 else ''
+            }
+            
+            raw_items = str(r_dict.get('items', ''))
+            
+            # Разбираем текст обратно в массив объектов для JS
+            parsed_items = []
+            for line in raw_items.strip().split('\n'):
+                match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
+                if match:
+                    parsed_items.append({
+                        'name': match.group(1).strip(),
+                        'cartQuantity': int(match.group(2)),
+                        'quantity': int(match.group(2))
+                    })
+            
+            orders.append({
+                'id': r_dict.get('id'),
+                'user_id': r_dict.get('user_id'),
+                'username': r_dict.get('username'),
+                'items': raw_items,
+                'items_list': parsed_items,
+                'total': float(r_dict.get('total', 0)),
+                'status': r_dict.get('status', 'new'),
+                'created_at': str(r_dict.get('created_at', ''))
+            })
 
         cur.close()
         conn.close()
@@ -381,37 +359,236 @@ def get_user_orders():
         print(f"Ошибка получения заказов: {e}", flush=True)
         return jsonify([])
 
-@flask_app.route('/api/broadcast', methods=['POST'])
-def send_broadcast():
+@flask_app.route('/api/admin-stats', methods=['GET'])
+def get_admin_stats():
+    """ Получение статистики магазина """
     try:
-        data = request.get_json(silent=True) or request.form.to_dict()
-        message_text = data.get('message')
-        if not message_text:
-            return jsonify({'success': False, 'error': 'Текст сообщения не может быть пустым'}), 400
-
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT user_id FROM users")
-        users = cur.fetchall()
+
+        # Проверяем наличие ручных настроек
+        m_rev = get_setting(cur, 'manual_revenue', None)
+        m_items = get_setting(cur, 'manual_items_sold', None)
+        m_orders = get_setting(cur, 'manual_orders_count', None)
+
+        if m_rev is not None and m_items is not None and m_orders is not None:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'total_revenue': int(m_rev),
+                'items_sold': int(m_items),
+                'total_orders': int(m_orders)
+            })
+
+        # Если ручных настроек нет — честно считаем по подтвержденным заказам
+        db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
+        rows = cur.fetchall()
+
+        total_orders = len(rows)
+        total_revenue = 0
+        items_sold = 0
+
+        for row in rows:
+            r_total = row['total'] if isinstance(row, dict) else row[1]
+            r_items = row['items'] if isinstance(row, dict) else row[0]
+            
+            total_revenue += float(r_total or 0)
+            if r_items:
+                matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
+                for m in matches:
+                    items_sold += int(m)
+
         cur.close()
         conn.close()
 
-        sent_count, fail_count = 0, 0
-        markup = telebot.types.InlineKeyboardMarkup()
-        web_app = telebot.types.WebAppInfo(url=RENDER_URL)
-        markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть каталог", web_app=web_app))
+        return jsonify({
+            'total_revenue': int(total_revenue),
+            'items_sold': items_sold,
+            'total_orders': total_orders
+        })
+    except Exception as e:
+        print(f"Ошибка получения статистики: {e}", flush=True)
+        return jsonify({'total_revenue': 0, 'items_sold': 0, 'total_orders': 0}), 500
 
-        for u in users:
-            uid = u['user_id'] if isinstance(u, dict) else u[0]
+@flask_app.route('/api/admin-stats/clear', methods=['POST'])
+def clear_admin_stats():
+    """ Сброс статистики (удаляем ручные оверрайды, чтобы статистика считалась заново из базы) """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/admin-stats/edit', methods=['POST'])
+def edit_admin_stats():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        set_setting(cur, 'manual_revenue', str(int(data.get('total_revenue', 0))))
+        set_setting(cur, 'manual_items_sold', str(int(data.get('items_sold', 0))))
+        set_setting(cur, 'manual_orders_count', str(int(data.get('total_orders', 0))))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/user-stats', methods=['GET'])
+def get_user_stats():
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id or not str(user_id).isdigit():
+            return jsonify({'orders_count': 0, 'total_spent': 0})
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        db_execute(
+            cur,
+            "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status != 'cancelled'",
+            (int(user_id),)
+        )
+        row = cur.fetchone()
+        if isinstance(row, dict):
+            orders_count = row.get('count', 0)
+            total_spent = float(row.get('total', 0))
+        else:
+            orders_count = row[0] if row else 0
+            total_spent = float(row[1]) if row else 0.0
+
+        cur.close()
+        conn.close()
+        return jsonify({'orders_count': orders_count, 'total_spent': int(total_spent)})
+    except Exception:
+        return jsonify({'orders_count': 0, 'total_spent': 0})
+
+@flask_app.route('/api/order', methods=['POST'])
+def create_order():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        user_id = data.get('user_id')
+        username = data.get('username', 'Неизвестен')
+        cart = data.get('cart', [])
+        
+        if isinstance(cart, str):
             try:
-                bot.send_message(uid, message_text, reply_markup=markup)
-                sent_count += 1
-                time.sleep(0.05)
-            except Exception as e:
-                print(f"Ошибка отправки пользователю {uid}: {e}", flush=True)
-                fail_count += 1
+                cart = json.loads(cart)
+            except Exception:
+                cart = []
 
-        return jsonify({'success': True, 'sent': sent_count, 'failed': fail_count})
+        if not user_id or not str(user_id).isdigit():
+            user_id = ADMIN_ID
+        else:
+            user_id = int(user_id)
+
+        if not cart:
+            return jsonify({'success': False, 'error': 'Корзина пуста'}), 400
+            
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if DATABASE_URL:
+            db_execute(cur, "INSERT INTO users (user_id, username) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username", (user_id, username))
+        else:
+            db_execute(cur, "INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+
+        for item in cart:
+            p_id = item.get('id')
+            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
+            name = item.get('name', 'Товар')
+
+            if p_id:
+                db_execute(cur, "SELECT name, quantity FROM products WHERE id = ?", (p_id,))
+            else:
+                db_execute(cur, "SELECT name, quantity FROM products WHERE name = ?", (name,))
+                
+            prod = cur.fetchone()
+            if prod:
+                stock = prod['quantity'] if isinstance(prod, dict) else prod[1]
+                p_name = prod['name'] if isinstance(prod, dict) else prod[0]
+                if qty > stock:
+                    cur.close()
+                    conn.close()
+                    return jsonify({'success': False, 'error': f"Товара '{p_name}' осталось только {stock} шт."}), 400
+            else:
+                cur.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f"Товар '{name}' не найден в базе"}), 400
+
+        total = 0
+        items_text = ""
+        items_client_text = ""
+        
+        for item in cart:
+            price = int(item.get('price', 0))
+            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
+            name = item.get('name', 'Товар')
+            p_id = item.get('id')
+            
+            total += price * qty
+            items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
+            items_client_text += f"• {name} x {qty} шт.\n"
+            
+            if p_id:
+                if DATABASE_URL:
+                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
+                else:
+                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE id = ?", (qty, p_id))
+            else:
+                if DATABASE_URL:
+                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE name = ?", (qty, name))
+                else:
+                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE name = ?", (qty, name))
+        
+        if DATABASE_URL:
+            cur.execute(
+                "INSERT INTO orders (user_id, username, items, total, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (user_id, username, items_text, total, 'new')
+            )
+            order_id = cur.fetchone()['id']
+        else:
+            cur.execute(
+                "INSERT INTO orders (user_id, username, items, total, status) VALUES (?, ?, ?, ?, ?)",
+                (user_id, username, items_text, total, 'new')
+            )
+            order_id = cur.lastrowid
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        markup = telebot.types.InlineKeyboardMarkup()
+        btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
+        btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
+        markup.add(btn_confirm, btn_cancel)
+        
+        admin_text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\nПользователь: @{username} (ID: {user_id})\n\nТовары:\n{items_text}\n💰 Итого: {total} руб."
+        try:
+            bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
+        except Exception as e:
+            print(f"Ошибка отправки админу: {e}")
+
+        client_text = (
+            f"🎉 Ваш заказ успешно оформлен!\n\n"
+            f"🔢 Номер заказа: #{order_id}\n\n"
+            f"📦 Состав заказа:\n{items_client_text}\n"
+            f"💰 Итого к оплате: {total} руб.\n\n"
+            f"⏳ Ожидайте подтверждения от администратора."
+        )
+        try:
+            bot.send_message(user_id, client_text)
+        except Exception as e:
+            print(f"Ошибка отправки клиенту: {e}")
+            
+        return jsonify({'success': True, 'order_id': order_id})
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -574,229 +751,37 @@ def api_upload_pdf():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@flask_app.route('/api/admin-stats', methods=['GET'])
-def get_admin_stats():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        m_rev = get_setting(cur, 'manual_revenue', None)
-        m_items = get_setting(cur, 'manual_items_sold', None)
-        m_orders = get_setting(cur, 'manual_orders_count', None)
-
-        if m_rev is not None and m_items is not None and m_orders is not None:
-            cur.close()
-            conn.close()
-            return jsonify({
-                'total_revenue': int(m_rev),
-                'items_sold': int(m_items),
-                'total_orders': int(m_orders)
-            })
-
-        db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
-        rows = cur.fetchall()
-
-        total_orders = len(rows)
-        total_revenue = 0
-        items_sold = 0
-
-        for row in rows:
-            r_total = row['total'] if isinstance(row, dict) else row[1]
-            r_items = row['items'] if isinstance(row, dict) else row[0]
-            
-            total_revenue += float(r_total or 0)
-            if r_items:
-                matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
-                for m in matches:
-                    items_sold += int(m)
-
-        cur.close()
-        conn.close()
-
-        return jsonify({
-            'total_revenue': int(total_revenue),
-            'items_sold': items_sold,
-            'total_orders': total_orders
-        })
-    except Exception as e:
-        return jsonify({'total_revenue': 0, 'items_sold': 0, 'total_orders': 0}), 500
-
-@flask_app.route('/api/admin-stats/clear', methods=['POST'])
-def clear_admin_stats():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@flask_app.route('/api/admin-stats/edit', methods=['POST'])
-def edit_admin_stats():
+@flask_app.route('/api/broadcast', methods=['POST'])
+def send_broadcast():
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
-        conn = get_db_connection()
-        cur = conn.cursor()
-        set_setting(cur, 'manual_revenue', str(int(data.get('total_revenue', 0))))
-        set_setting(cur, 'manual_items_sold', str(int(data.get('items_sold', 0))))
-        set_setting(cur, 'manual_orders_count', str(int(data.get('total_orders', 0))))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@flask_app.route('/api/user-stats', methods=['GET'])
-def get_user_stats():
-    try:
-        user_id = request.args.get('user_id')
-        if not user_id:
-            return jsonify({'orders_count': 0, 'total_spent': 0})
+        message_text = data.get('message')
+        if not message_text:
+            return jsonify({'success': False, 'error': 'Текст сообщения не может быть пустым'}), 400
 
         conn = get_db_connection()
         cur = conn.cursor()
-
-        db_execute(
-            cur,
-            "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status != 'cancelled'",
-            (int(user_id),)
-        )
-        row = cur.fetchone()
-        if isinstance(row, dict):
-            orders_count = row.get('count', 0)
-            total_spent = float(row.get('total', 0))
-        else:
-            orders_count = row[0] if row else 0
-            total_spent = float(row[1]) if row else 0.0
-
+        cur.execute("SELECT user_id FROM users")
+        users = cur.fetchall()
         cur.close()
         conn.close()
-        return jsonify({'orders_count': orders_count, 'total_spent': int(total_spent)})
-    except Exception:
-        return jsonify({'orders_count': 0, 'total_spent': 0})
 
-@flask_app.route('/api/order', methods=['POST'])
-def create_order():
-    try:
-        data = request.get_json(silent=True) or request.form.to_dict()
-        user_id = data.get('user_id')
-        username = data.get('username', 'Неизвестен')
-        cart = data.get('cart', [])
-        
-        if isinstance(cart, str):
-            try:
-                cart = json.loads(cart)
-            except Exception:
-                cart = []
-
-        if not user_id:
-            user_id = ADMIN_ID
-
-        if not cart:
-            return jsonify({'success': False, 'error': 'Корзина пуста'}), 400
-            
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        if DATABASE_URL:
-            db_execute(cur, "INSERT INTO users (user_id, username) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username", (user_id, username))
-        else:
-            db_execute(cur, "INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
-
-        for item in cart:
-            p_id = item.get('id')
-            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
-            name = item.get('name', 'Товар')
-
-            if p_id:
-                db_execute(cur, "SELECT name, quantity FROM products WHERE id = ?", (p_id,))
-            else:
-                db_execute(cur, "SELECT name, quantity FROM products WHERE name = ?", (name,))
-                
-            prod = cur.fetchone()
-            if prod:
-                stock = prod['quantity'] if isinstance(prod, dict) else prod[1]
-                p_name = prod['name'] if isinstance(prod, dict) else prod[0]
-                if qty > stock:
-                    cur.close()
-                    conn.close()
-                    return jsonify({'success': False, 'error': f"Товара '{p_name}' осталось только {stock} шт."}), 400
-            else:
-                cur.close()
-                conn.close()
-                return jsonify({'success': False, 'error': f"Товар '{name}' не найден в базе"}), 400
-
-        total = 0
-        items_text = ""
-        items_client_text = ""
-        
-        for item in cart:
-            price = int(item.get('price', 0))
-            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
-            name = item.get('name', 'Товар')
-            p_id = item.get('id')
-            
-            total += price * qty
-            items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
-            items_client_text += f"• {name} x {qty} шт.\n"
-            
-            if p_id:
-                if DATABASE_URL:
-                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
-                else:
-                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE id = ?", (qty, p_id))
-            else:
-                if DATABASE_URL:
-                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE name = ?", (qty, name))
-                else:
-                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE name = ?", (qty, name))
-        
-        if DATABASE_URL:
-            cur.execute(
-                "INSERT INTO orders (user_id, username, items, total, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (user_id, username, items_text, total, 'new')
-            )
-            order_id = cur.fetchone()['id']
-        else:
-            cur.execute(
-                "INSERT INTO orders (user_id, username, items, total, status) VALUES (?, ?, ?, ?, ?)",
-                (user_id, username, items_text, total, 'new')
-            )
-            order_id = cur.lastrowid
-
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        sent_count, fail_count = 0, 0
         markup = telebot.types.InlineKeyboardMarkup()
-        btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
-        btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
-        markup.add(btn_confirm, btn_cancel)
-        
-        admin_text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\nПользователь: @{username} (ID: {user_id})\n\nТовары:\n{items_text}\n💰 Итого: {total} руб."
-        try:
-            bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
-        except Exception as e:
-            print(f"Ошибка отправки админу: {e}")
+        web_app = telebot.types.WebAppInfo(url=RENDER_URL)
+        markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть каталог", web_app=web_app))
 
-        client_text = (
-            f"🎉 Ваш заказ успешно оформлен!\n\n"
-            f"🔢 Номер заказа: #{order_id}\n\n"
-            f"📦 Состав заказа:\n{items_client_text}\n"
-            f"💰 Итого к оплате: {total} руб.\n\n"
-            f"⏳ Ожидайте подтверждения от администратора."
-        )
-        try:
-            bot.send_message(user_id, client_text)
-        except Exception as e:
-            print(f"Ошибка отправки клиенту: {e}")
-            
-        return jsonify({'success': True, 'order_id': order_id})
+        for u in users:
+            uid = u['user_id'] if isinstance(u, dict) else u[0]
+            try:
+                bot.send_message(uid, message_text, reply_markup=markup)
+                sent_count += 1
+                time.sleep(0.05)
+            except Exception as e:
+                print(f"Ошибка отправки пользователю {uid}: {e}", flush=True)
+                fail_count += 1
 
+        return jsonify({'success': True, 'sent': sent_count, 'failed': fail_count})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
