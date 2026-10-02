@@ -238,7 +238,7 @@ def handle_all_callbacks(call):
                 message_id=call.message.message_id,
                 reply_markup=None
             )
-            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден и передан в сборку!")
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором!")
         except Exception as e:
             print(f"Ошибка редактирования: {e}")
 
