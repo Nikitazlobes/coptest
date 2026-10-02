@@ -9,7 +9,7 @@
         :root {
             --bg-color: #080c14;
             --card-bg: rgba(21, 28, 44, 0.7);
-            --card-solid: #111827; /* Твердый фон для карточек без тяжелого blur */
+            --card-solid: #111827;
             --card-border: rgba(255, 255, 255, 0.08);
             --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
             --accent-hover: #4f46e5;
@@ -103,49 +103,99 @@
             border: 1px solid var(--card-border);
             border-radius: 20px;
             padding: 18px;
-            margin-top: 14px;
-            margin-bottom: 14px;
+            margin-top: 10px;
+            margin-bottom: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .stat-card {
+        /* Карточка истории заказов */
+        .history-card {
             background: var(--card-bg);
             backdrop-filter: blur(12px);
             border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 14px;
+            margin-bottom: 10px;
         }
 
-        .stat-label {
-            font-size: 11px;
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+        }
+
+        .history-item-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
             color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
-        .stat-value {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
+        /* Поиск и Категории */
+        .search-box {
+            margin-bottom: 12px;
         }
 
-        /* --- ОПТИМИЗИРОВАННАЯ СЕТКА КАТАЛОГА --- */
+        .search-input {
+            width: 100%;
+            background: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--card-border);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 14px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: #6366f1;
+        }
+
+        .category-scroll {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 12px;
+            margin-bottom: 8px;
+            scrollbar-width: none;
+        }
+
+        .category-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .cat-chip {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            white-space: nowrap;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .cat-chip.active {
+            background: var(--accent-gradient);
+            color: white;
+            border-color: transparent;
+            font-weight: 600;
+        }
+
+        /* Оптимизированная сетка */
         .product-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
             gap: 12px;
-            contain: layout style; /* Изолирует перерисовывание для плавности */
+            contain: layout style;
         }
 
-        /* --- ОПТИМИЗИРОВАННАЯ КАРТОЧКА (БЕЗ BACKDROP-FILTER BLUR) --- */
         .product-card {
             background: var(--card-solid); 
             border: 1px solid var(--card-border);
@@ -155,8 +205,6 @@
             flex-direction: column;
             justify-content: space-between;
             cursor: pointer;
-            
-            /* Аппаратное ускорение на GPU для устранения фризов */
             transform: translateZ(0);
             will-change: transform;
             transition: transform 0.15s ease;
@@ -173,7 +221,7 @@
             border-radius: 12px;
             margin-bottom: 8px;
             background: #0b0f19;
-            content-visibility: auto; /* Браузер оптимизирует рендеринг незагруженных фото */
+            content-visibility: auto;
         }
 
         .product-title {
@@ -309,7 +357,7 @@
             text-transform: uppercase;
         }
 
-        .form-group input {
+        .form-group input, .form-group select {
             width: 100%;
             background: rgba(8, 12, 20, 0.6);
             border: 1px solid var(--card-border);
@@ -321,7 +369,7 @@
             transition: border-color 0.2s;
         }
 
-        .form-group input:focus {
+        .form-group input:focus, .form-group select:focus {
             border-color: #6366f1;
         }
 
@@ -387,27 +435,37 @@
                 <button class="btn" style="width: auto; padding: 8px 16px;" onclick="window.open('https://t.me/+qSzldxTh8Zk5MDUy', '_blank')">Открыть канал</button>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Заказов</div>
-                    <div class="stat-value" id="home-orders-count">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Покупок на</div>
-                    <div class="stat-value" id="home-total-spent">0 ₽</div>
-                </div>
-            </div>
+            <button class="btn" style="padding: 14px; font-size: 15px; margin-bottom: 20px;" onclick="switchTab('catalog', document.querySelectorAll('.nav-item')[1])">Перейти в каталог 🛍️</button>
 
-            <button class="btn" style="padding: 14px; font-size: 15px;" onclick="switchTab('catalog', document.querySelectorAll('.nav-item')[1])">Открыть каталог</button>
+            <!-- Блок истории заказов клиенту -->
+            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc;">📜 История заказов</h3>
+            <div id="user-orders-history">
+                <p style="color: var(--text-secondary); font-size: 13px;">Загрузка истории...</p>
+            </div>
         </div>
     </div>
 
     <!-- Каталог -->
     <div id="tab-catalog" class="tab-content">
-        <div style="padding: 4px 4px 14px 4px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="padding: 4px 4px 10px 4px; display: flex; justify-content: space-between; align-items: center;">
             <h2 style="font-size: 18px; font-weight: 700;">Каталог товаров</h2>
             <span class="badge" id="user-role">Клиент</span>
         </div>
+
+        <!-- Поиск -->
+        <div class="search-box">
+            <input type="text" id="search-input" class="search-input" placeholder="🔍 Поиск по названию..." oninput="filterProducts()">
+        </div>
+
+        <!-- Категории -->
+        <div class="category-scroll">
+            <div class="cat-chip active" onclick="selectCategory('all', this)">Все</div>
+            <div class="cat-chip" onclick="selectCategory('liquids', this)">🧃 Жидкости</div>
+            <div class="cat-chip" onclick="selectCategory('pods', this)">💨 Поды / Железо</div>
+            <div class="cat-chip" onclick="selectCategory('consumables', this)">⚡ Расходники</div>
+            <div class="cat-chip" onclick="selectCategory('other', this)">📦 Другое</div>
+        </div>
+
         <div class="product-grid" id="product-list">
             <p style="color: var(--text-secondary);">Загрузка товаров...</p>
         </div>
@@ -461,22 +519,31 @@
             <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">➕ Добавить товар</h3>
             <div class="form-group">
                 <label>Название товара</label>
-                <input type="text" id="add-name" placeholder="Пример: Товар оптом">
+                <input type="text" id="add-name" placeholder="Пример: Husky Mint 30ml">
+            </div>
+            <div class="form-group">
+                <label>Категория</label>
+                <select id="add-category">
+                    <option value="liquids">🧃 Жидкости</option>
+                    <option value="pods">💨 Поды / Железо</option>
+                    <option value="consumables">⚡ Расходники / Картриджи</option>
+                    <option value="other">📦 Другое</option>
+                </select>
             </div>
             <div class="form-group">
                 <label>Цена (руб)</label>
-                <input type="number" id="add-price" placeholder="1500">
+                <input type="number" id="add-price" placeholder="450">
             </div>
             <div class="form-group">
                 <label>Количество (шт)</label>
                 <input type="number" id="add-quantity" value="10" placeholder="10">
             </div>
             <div class="form-group">
-                <label>Ссылка на фото (URL) — сохраняется всегда</label>
+                <label>Ссылка на фото (URL)</label>
                 <input type="url" id="add-image-url" placeholder="https://i.ibb.co/example/photo.jpg">
             </div>
             <div class="form-group">
-                <label>Или загрузить файл (временное фото)</label>
+                <label>Или загрузить файл</label>
                 <input type="file" id="add-image-file" accept="image/*" style="padding: 6px;">
             </div>
             <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
@@ -520,6 +587,15 @@
             <div class="form-group">
                 <label>Название</label>
                 <input type="text" id="edit-name">
+            </div>
+            <div class="form-group">
+                <label>Категория</label>
+                <select id="edit-category">
+                    <option value="liquids">🧃 Жидкости</option>
+                    <option value="pods">💨 Поды / Железо</option>
+                    <option value="consumables">⚡ Расходники / Картриджи</option>
+                    <option value="other">📦 Другое</option>
+                </select>
             </div>
             <div class="form-group">
                 <label>Цена (₽)</label>
@@ -592,6 +668,7 @@
         let currentUserId = null;
         let products = [];
         let cart = [];
+        let selectedCategory = 'all';
 
         const tg = window.Telegram?.WebApp;
         if (tg) {
@@ -627,15 +704,52 @@
             }
         }
 
-        async function fetchUserStats() {
+        // Загрузка истории заказов пользователя с сервера
+        async function fetchUserOrderHistory() {
+            const container = document.getElementById('user-orders-history');
             try {
-                const response = await fetch(`/api/user-stats?user_id=${currentUserId}`);
+                const response = await fetch(`/api/user-orders?user_id=${currentUserId}`);
                 if (response.ok) {
-                    const data = await response.json();
-                    document.getElementById('home-orders-count').innerText = data.orders_count || 0;
-                    document.getElementById('home-total-spent').innerText = (data.total_spent || 0) + ' ₽';
+                    const orders = await response.json();
+                    if (!orders || orders.length === 0) {
+                        container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">У вас пока нет оформленных заказов.</p>';
+                        return;
+                    }
+
+                    container.innerHTML = '';
+                    orders.forEach(order => {
+                        let itemsHtml = '';
+                        if (Array.isArray(order.items)) {
+                            order.items.forEach(item => {
+                                itemsHtml += `
+                                    <div class="history-item-row">
+                                        <span>• ${item.name} (x${item.cartQuantity || item.quantity || 1})</span>
+                                        <span>${(item.price * (item.cartQuantity || item.quantity || 1))} ₽</span>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        container.innerHTML += `
+                            <div class="history-card">
+                                <div class="history-header">
+                                    <span style="font-size: 13px; font-weight: 700; color: #a5b4fc;">Заказ №${order.id}</span>
+                                    <span style="font-size: 11px; color: var(--text-secondary);">${order.date}</span>
+                                </div>
+                                <div style="margin-bottom: 8px;">${itemsHtml}</div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 6px; font-size: 14px; font-weight: 700;">
+                                    <span>Сумма:</span>
+                                    <span style="color: #10b981;">${order.total} ₽</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Ошибка загрузки истории заказов.</p>';
                 }
-            } catch (e) {}
+            } catch (e) {
+                container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Ошибка сети.</p>';
+            }
         }
 
         async function fetchAdminStats() {
@@ -648,9 +762,7 @@
                     document.getElementById('admin-items-sold').innerText = (data.items_sold || 0) + ' шт.';
                     document.getElementById('admin-total-orders').innerText = data.total_orders || 0;
                 }
-            } catch (e) {
-                console.error('Ошибка загрузки статистики админа:', e);
-            }
+            } catch (e) {}
         }
 
         async function clearAdminStats() {
@@ -727,7 +839,6 @@
                 const result = await response.json();
                 return result.image_url || '';
             } catch (e) {
-                console.error('Ошибка загрузки фото:', e);
                 return '';
             }
         }
@@ -742,27 +853,52 @@
             }
         }
 
+        function selectCategory(cat, chipElement) {
+            selectedCategory = cat;
+            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+            if (chipElement) chipElement.classList.add('active');
+            renderProducts();
+        }
+
+        function filterProducts() {
+            renderProducts();
+        }
+
         function renderProducts() {
             const list = document.getElementById('product-list');
+            const searchQuery = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
+
             list.innerHTML = '';
             if (!products || products.length === 0) {
                 list.innerHTML = '<p style="color: var(--text-secondary);">Товаров пока нет.</p>';
                 return;
             }
-            products.forEach(p => {
+
+            const filtered = products.filter(p => {
+                const matchesCategory = selectedCategory === 'all' || (p.category || 'other') === selectedCategory;
+                const matchesSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery);
+                return matchesCategory && matchesSearch;
+            });
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1 / -1; text-align: center; padding: 20px;">Ничего не найдено 🔍</p>';
+                return;
+            }
+
+            filtered.forEach(p => {
                 let adminButtons = '';
                 if (currentUserId === ADMIN_ID) {
                     const safeName = (p.name || '').replace(/'/g, "\\'");
                     const safeImage = (p.image_url || '').replace(/'/g, "\\'");
+                    const pCat = p.category || 'other';
                     adminButtons = `
                         <div style="display: flex; gap: 6px; margin-top: 8px;" onclick="event.stopPropagation()">
-                            <button class="btn btn-secondary" style="padding: 6px; font-size: 12px;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0}, '${safeImage}')">Изменить</button>
+                            <button class="btn btn-secondary" style="padding: 6px; font-size: 12px;" onclick="openEditModal(${p.id}, '${safeName}', ${p.price || 0}, ${p.quantity || 0}, '${safeImage}', '${pCat}')">Изменить</button>
                             <button class="btn btn-secondary" style="padding: 6px; font-size: 12px; color: var(--danger-color);" onclick="deleteProduct(${p.id})">Удалить</button>
                         </div>
                     `;
                 }
 
-                /* Ленивая загрузка для картинок loading="lazy" */
                 const imgHtml = p.image_url ? `<img src="${p.image_url}" class="product-img" loading="lazy" alt="${p.name}">` : '';
                 const stock = p.quantity || 0;
                 const isOutOfStock = stock <= 0;
@@ -830,6 +966,7 @@
 
         async function addNewProduct() {
             const name = document.getElementById('add-name').value;
+            const category = document.getElementById('add-category').value;
             const price = parseFloat(document.getElementById('add-price').value);
             const quantity = parseInt(document.getElementById('add-quantity').value) || 0;
             const urlInput = document.getElementById('add-image-url').value.trim();
@@ -850,6 +987,7 @@
             btn.innerText = 'Сохранение...';
             const newProd = { 
                 name: name, 
+                category: category,
                 price: price, 
                 quantity: quantity, 
                 image_url: imageUrl, 
@@ -879,9 +1017,10 @@
             btn.innerText = 'Сохранить в базу';
         }
 
-        function openEditModal(id, name, price, quantity, imageUrl) {
+        function openEditModal(id, name, price, quantity, imageUrl, category) {
             document.getElementById('edit-id').value = id;
             document.getElementById('edit-name').value = name;
+            document.getElementById('edit-category').value = category || 'other';
             document.getElementById('edit-price').value = price;
             document.getElementById('edit-quantity').value = quantity;
             document.getElementById('edit-old-image').value = imageUrl;
@@ -903,6 +1042,7 @@
         async function saveEditedProduct() {
             const id = document.getElementById('edit-id').value;
             const name = document.getElementById('edit-name').value;
+            const category = document.getElementById('edit-category').value;
             const price = parseFloat(document.getElementById('edit-price').value);
             const quantity = parseInt(document.getElementById('edit-quantity').value) || 0;
             const newUrl = document.getElementById('edit-image-url').value.trim();
@@ -927,6 +1067,7 @@
                     body: JSON.stringify({ 
                         id: id, 
                         name: name, 
+                        category: category,
                         price: price, 
                         quantity: quantity, 
                         image_url: imageUrl, 
@@ -1110,7 +1251,7 @@
                     showAlertMessage('Заказ успешно оформлен!');
                     cart = [];
                     updateCart();
-                    fetchUserStats();
+                    fetchUserOrderHistory();
                     fetchProducts();
                     fetchAdminStats();
                     switchTab('home', document.querySelectorAll('.nav-item')[0]);
@@ -1131,7 +1272,9 @@
             if (el) el.classList.add('active');
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
-            if (tabId === 'admin') {
+            if (tabId === 'home') {
+                fetchUserOrderHistory();
+            } else if (tabId === 'admin') {
                 fetchAdminStats();
             }
         }
@@ -1178,7 +1321,7 @@
         }
 
         fetchProducts();
-        fetchUserStats();
+        fetchUserOrderHistory();
         fetchAdminStats();
     </script>
 </body>
