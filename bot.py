@@ -254,7 +254,6 @@ def handle_all_callbacks(call):
             return
 
         db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
-        # При подтверждении удаляем ручной оверрайд статистики, чтобы пересчитать реальные цифры
         db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
         conn.commit()
 
@@ -265,7 +264,7 @@ def handle_all_callbacks(call):
                 message_id=call.message.message_id,
                 reply_markup=None
             )
-            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором!")
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором и добавлен в вашу историю!")
         except Exception as e:
             print(f"Ошибка редактирования: {e}")
 
@@ -287,6 +286,7 @@ def handle_all_callbacks(call):
             print(f"Ошибка возврата товара: {e}", flush=True)
 
         db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
         conn.commit()
 
         try:
@@ -308,14 +308,13 @@ def handle_all_callbacks(call):
 @flask_app.route('/api/user-orders', methods=['GET'])
 @flask_app.route('/api/orders', methods=['GET'])
 def get_user_orders():
-    """ Получение истории заказов """
     try:
         user_id_raw = request.args.get('user_id')
         conn = get_db_connection()
         cur = conn.cursor()
 
         if user_id_raw and str(user_id_raw).isdigit():
-            db_execute(cur, "SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", (int(user_id_raw),))
+            db_execute(cur, "SELECT * FROM orders WHERE user_id = ? AND status = 'confirmed' ORDER BY id DESC", (int(user_id_raw),))
         else:
             db_execute(cur, "SELECT * FROM orders ORDER BY id DESC")
 
@@ -330,7 +329,6 @@ def get_user_orders():
             
             raw_items = str(r_dict.get('items', ''))
             
-            # Разбираем текст обратно в массив объектов для JS
             parsed_items = []
             for line in raw_items.strip().split('\n'):
                 match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
@@ -361,12 +359,10 @@ def get_user_orders():
 
 @flask_app.route('/api/admin-stats', methods=['GET'])
 def get_admin_stats():
-    """ Получение статистики магазина """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Проверяем наличие ручных настроек
         m_rev = get_setting(cur, 'manual_revenue', None)
         m_items = get_setting(cur, 'manual_items_sold', None)
         m_orders = get_setting(cur, 'manual_orders_count', None)
@@ -380,7 +376,6 @@ def get_admin_stats():
                 'total_orders': int(m_orders)
             })
 
-        # Если ручных настроек нет — честно считаем по подтвержденным заказам
         db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
         rows = cur.fetchall()
 
@@ -412,11 +407,11 @@ def get_admin_stats():
 
 @flask_app.route('/api/admin-stats/clear', methods=['POST'])
 def clear_admin_stats():
-    """ Сброс статистики (удаляем ручные оверрайды, чтобы статистика считалась заново из базы) """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
+        db_execute(cur, "UPDATE orders SET status = 'archived' WHERE status = 'confirmed'")
         conn.commit()
         cur.close()
         conn.close()
@@ -440,6 +435,21 @@ def edit_admin_stats():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@flask_app.route('/api/clear-all-orders', methods=['POST'])
+def clear_all_orders():
+    """ Полное удаление всей истории заказов для всех пользователей """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        db_execute(cur, "DELETE FROM orders")
+        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @flask_app.route('/api/user-stats', methods=['GET'])
 def get_user_stats():
     try:
@@ -452,7 +462,7 @@ def get_user_stats():
 
         db_execute(
             cur,
-            "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status != 'cancelled'",
+            "SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM orders WHERE user_id = ? AND status = 'confirmed'",
             (int(user_id),)
         )
         row = cur.fetchone()
