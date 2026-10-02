@@ -54,6 +54,28 @@ def set_setting(cur, key, value):
     db_execute(cur, "DELETE FROM settings WHERE key = ?", (key,))
     db_execute(cur, "INSERT INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
 
+def detect_category(product_name: str) -> str:
+    """ Автоматическое определение категории по ключевым словам """
+    name = product_name.lower()
+    
+    # Жидкости
+    if any(w in name for w in ['жидкость', 'жижа', 'жижка', 'liq', 'liquid', 'salt', 'солевая', 'щелочь']):
+        return 'Жидкости'
+    
+    # Картриджи и испарители
+    if any(w in name for w in ['картридж', 'катридж', 'испаритель', 'испар', 'coil', 'испарик', 'бак', 'карт']):
+        return 'Картриджи и Испарители'
+        
+    # Устройства / ПОДы
+    if any(w in name for w in ['pod', 'под', 'набор', 'kit', 'устройство', 'пасито', 'pasito', 'charon', 'чарон', 'xros', 'aegis']):
+        return 'Устройства'
+        
+    # Одноразовые устройства
+    if any(w in name for w in ['одноразка', 'одноразовая', 'puff', 'тяг']):
+        return 'Одноразки'
+
+    return 'Разное'
+
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -65,10 +87,11 @@ def init_db():
                 name TEXT,
                 price REAL,
                 quantity INTEGER DEFAULT 0,
-                image_url TEXT DEFAULT ''
+                image_url TEXT DEFAULT '',
+                category TEXT DEFAULT 'Разное'
             );
         """)
-        for col_def in ["quantity INTEGER DEFAULT 0", "image_url TEXT DEFAULT ''"]:
+        for col_def in ["quantity INTEGER DEFAULT 0", "image_url TEXT DEFAULT ''", "category TEXT DEFAULT 'Разное'"]:
             try:
                 cur.execute(f"ALTER TABLE products ADD COLUMN {col_def};")
                 conn.commit()
@@ -104,8 +127,8 @@ def init_db():
         row = cur.fetchone()
         count = row['count'] if isinstance(row, dict) else row[0]
         if count == 0:
-            cur.execute("INSERT INTO products (name, price, quantity) VALUES (%s, %s, %s)", ("Картридж", 500, 10))
-            cur.execute("INSERT INTO products (name, price, quantity) VALUES (%s, %s, %s)", ("Жидкость", 400, 15))
+            cur.execute("INSERT INTO products (name, price, quantity, category) VALUES (%s, %s, %s, %s)", ("Картридж", 500, 10, "Картриджи и Испарители"))
+            cur.execute("INSERT INTO products (name, price, quantity, category) VALUES (%s, %s, %s, %s)", ("Жидкость", 400, 15, "Жидкости"))
             conn.commit()
     else:
         cur.execute("""
@@ -114,7 +137,8 @@ def init_db():
                 name TEXT,
                 price REAL,
                 quantity INTEGER DEFAULT 0,
-                image_url TEXT DEFAULT ''
+                image_url TEXT DEFAULT '',
+                category TEXT DEFAULT 'Разное'
             )
         """)
         cur.execute("""
@@ -149,11 +173,16 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        try:
+            cur.execute("ALTER TABLE products ADD COLUMN category TEXT DEFAULT 'Разное'")
+        except sqlite3.OperationalError:
+            pass
+
         cur.execute("SELECT COUNT(*) FROM products;")
         count = cur.fetchone()[0]
         if count == 0:
-            cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Картридж", 500, 10))
-            cur.execute("INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", ("Жидкость", 400, 15))
+            cur.execute("INSERT INTO products (name, price, quantity, category) VALUES (?, ?, ?, ?)", ("Картридж", 500, 10, "Картриджи и Испарители"))
+            cur.execute("INSERT INTO products (name, price, quantity, category) VALUES (?, ?, ?, ?)", ("Жидкость", 400, 15, "Жидкости"))
         conn.commit()
     
     cur.close()
@@ -273,7 +302,6 @@ def handle_all_callbacks(call):
             conn.close()
             return
 
-        # Надежный возврат товара на склад при отмене заказа администратором
         try:
             lines = items_desc.strip().split('\n')
             for line in lines:
@@ -468,9 +496,14 @@ def update_or_add_product():
         price = data.get('price')
         quantity = data.get('quantity', 0)
         image_url = data.get('image_url', '')
+        category = data.get('category')
 
         if not name or price is None:
             return jsonify({'success': False, 'error': 'Заполните название и цену'}), 400
+
+        # Если категория не передана из веб-интерфейса, определяем её автоматически
+        if not category or category == 'Разное':
+            category = detect_category(name)
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -478,14 +511,14 @@ def update_or_add_product():
         if product_id:
             db_execute(cur, """
                 UPDATE products 
-                SET name = ?, price = ?, quantity = ?, image_url = ?
+                SET name = ?, price = ?, quantity = ?, image_url = ?, category = ?
                 WHERE id = ?
-            """, (name, float(price), int(quantity), image_url, product_id))
+            """, (name, float(price), int(quantity), image_url, category, product_id))
         else:
             db_execute(cur, """
-                INSERT INTO products (name, price, quantity, image_url)
-                VALUES (?, ?, ?, ?)
-            """, (name, float(price), int(quantity), image_url))
+                INSERT INTO products (name, price, quantity, image_url, category)
+                VALUES (?, ?, ?, ?, ?)
+            """, (name, float(price), int(quantity), image_url, category))
 
         conn.commit()
         cur.close()
@@ -568,15 +601,17 @@ def api_upload_pdf():
                     continue
 
                 if len(clean_name) > 2:
+                    category = detect_category(clean_name)
+                    
                     db_execute(cur, "SELECT id, quantity FROM products WHERE name = ?", (clean_name,))
                     existing = cur.fetchone()
                     if existing:
                         p_id = existing['id'] if isinstance(existing, dict) else existing[0]
                         p_qty = existing['quantity'] if isinstance(existing, dict) else existing[1]
                         new_qty = (p_qty or 0) + quantity
-                        db_execute(cur, "UPDATE products SET price = ?, quantity = ? WHERE id = ?", (final_price, new_qty, p_id))
+                        db_execute(cur, "UPDATE products SET price = ?, quantity = ?, category = ? WHERE id = ?", (final_price, new_qty, category, p_id))
                     else:
-                        db_execute(cur, "INSERT INTO products (name, price, quantity) VALUES (?, ?, ?)", (clean_name, final_price, quantity))
+                        db_execute(cur, "INSERT INTO products (name, price, quantity, category) VALUES (?, ?, ?, ?)", (clean_name, final_price, quantity, category))
                     added_count += 1
             except ValueError:
                 pass
@@ -618,7 +653,6 @@ def create_order():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # === ПРОВЕРКА НАЛИЧИЯ В КАТАЛОГЕ ===
         for item in cart:
             p_id = item.get('id')
             qty = int(item.get('cartQuantity', item.get('quantity', 1)))
@@ -662,7 +696,6 @@ def create_order():
             items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
             items_client_text += f"• {name} x {qty} шт.\n"
             
-            # Автоматическое списание со склада с защитой от ухода в минус
             if p_id:
                 if DATABASE_URL:
                     db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
@@ -687,7 +720,6 @@ def create_order():
             )
             order_id = cur.lastrowid
 
-        # Фиксируем изменения в базе данных
         conn.commit()
         cur.close()
         conn.close()
