@@ -421,17 +421,58 @@ def clear_admin_stats():
 
 @flask_app.route('/api/admin-stats/edit', methods=['POST'])
 def edit_admin_stats():
+    """ Накопительное суммирование при ручном изменении выручки, товаров и заказов """
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
+        
+        add_revenue = int(data.get('total_revenue', 0))
+        add_items = int(data.get('items_sold', 0))
+        add_orders = int(data.get('total_orders', 0))
+
         conn = get_db_connection()
         cur = conn.cursor()
-        set_setting(cur, 'manual_revenue', str(int(data.get('total_revenue', 0))))
-        set_setting(cur, 'manual_items_sold', str(int(data.get('items_sold', 0))))
-        set_setting(cur, 'manual_orders_count', str(int(data.get('total_orders', 0))))
+
+        m_rev = get_setting(cur, 'manual_revenue', None)
+        m_items = get_setting(cur, 'manual_items_sold', None)
+        m_orders = get_setting(cur, 'manual_orders_count', None)
+
+        if m_rev is not None and m_items is not None and m_orders is not None:
+            current_rev = int(m_rev)
+            current_items = int(m_items)
+            current_orders = int(m_orders)
+        else:
+            db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
+            rows = cur.fetchall()
+            current_orders = len(rows)
+            current_rev = 0
+            current_items = 0
+            for row in rows:
+                r_total = row['total'] if isinstance(row, dict) else row[1]
+                r_items = row['items'] if isinstance(row, dict) else row[0]
+                current_rev += float(r_total or 0)
+                if r_items:
+                    matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
+                    for m in matches:
+                        current_items += int(m)
+
+        new_revenue = current_rev + add_revenue
+        new_items = current_items + add_items
+        new_orders = current_orders + add_orders
+
+        set_setting(cur, 'manual_revenue', str(new_revenue))
+        set_setting(cur, 'manual_items_sold', str(new_items))
+        set_setting(cur, 'manual_orders_count', str(new_orders))
+
         conn.commit()
         cur.close()
         conn.close()
-        return jsonify({'success': True})
+        
+        return jsonify({
+            'success': True, 
+            'total_revenue': new_revenue, 
+            'items_sold': new_items, 
+            'total_orders': new_orders
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
