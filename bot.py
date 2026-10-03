@@ -371,9 +371,9 @@ def get_admin_stats():
             cur.close()
             conn.close()
             return jsonify({
-                'total_revenue': int(m_rev),
-                'items_sold': int(m_items),
-                'total_orders': int(m_orders)
+                'total_revenue': int(float(m_rev)),
+                'items_sold': int(float(m_items)),
+                'total_orders': int(float(m_orders))
             })
 
         db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
@@ -425,9 +425,9 @@ def edit_admin_stats():
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
         
-        add_revenue = int(data.get('total_revenue', 0))
-        add_items = int(data.get('items_sold', 0))
-        add_orders = int(data.get('total_orders', 0))
+        add_revenue = int(float(data.get('total_revenue', 0)))
+        add_items = int(float(data.get('items_sold', 0)))
+        add_orders = int(float(data.get('total_orders', 0)))
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -437,9 +437,9 @@ def edit_admin_stats():
         m_orders = get_setting(cur, 'manual_orders_count', None)
 
         if m_rev is not None and m_items is not None and m_orders is not None:
-            current_rev = int(m_rev)
-            current_items = int(m_items)
-            current_orders = int(m_orders)
+            current_rev = int(float(m_rev))
+            current_items = int(float(m_items))
+            current_orders = int(float(m_orders))
         else:
             db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
             rows = cur.fetchall()
