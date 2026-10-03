@@ -254,7 +254,6 @@ def handle_all_callbacks(call):
             return
 
         db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
-        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
         conn.commit()
 
         try:
@@ -286,7 +285,6 @@ def handle_all_callbacks(call):
             print(f"Ошибка возврата товара: {e}", flush=True)
 
         db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
-        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
         conn.commit()
 
         try:
@@ -363,41 +361,43 @@ def get_admin_stats():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        m_rev = get_setting(cur, 'manual_revenue', None)
-        m_items = get_setting(cur, 'manual_items_sold', None)
-        m_orders = get_setting(cur, 'manual_orders_count', None)
-
-        if m_rev is not None and m_items is not None and m_orders is not None:
-            cur.close()
-            conn.close()
-            return jsonify({
-                'total_revenue': int(float(m_rev)),
-                'items_sold': int(float(m_items)),
-                'total_orders': int(float(m_orders))
-            })
-
+        # Считаем сумму по всем подтвержденным заказам из базы
         db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
         rows = cur.fetchall()
 
-        total_orders = len(rows)
-        total_revenue = 0
-        items_sold = 0
+        orders_from_db = len(rows)
+        revenue_from_db = 0
+        items_from_db = 0
 
         for row in rows:
             r_total = row['total'] if isinstance(row, dict) else row[1]
             r_items = row['items'] if isinstance(row, dict) else row[0]
             
-            total_revenue += float(r_total or 0)
+            revenue_from_db += float(r_total or 0)
             if r_items:
                 matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
                 for m in matches:
-                    items_sold += int(m)
+                    items_from_db += int(m)
+
+        # Берем ручную базу (если она задана)
+        m_rev = get_setting(cur, 'manual_revenue', None)
+        m_items = get_setting(cur, 'manual_items_sold', None)
+        m_orders = get_setting(cur, 'manual_orders_count', None)
+
+        base_revenue = int(float(m_rev)) if m_rev is not None else 0
+        base_items = int(float(m_items)) if m_items is not None else 0
+        base_orders = int(float(m_orders)) if m_orders is not None else 0
 
         cur.close()
         conn.close()
 
+        # Итоговая статистика = Ручная база + Заказы из базы
+        total_revenue = base_revenue + int(revenue_from_db)
+        items_sold = base_items + items_from_db
+        total_orders = base_orders + orders_from_db
+
         return jsonify({
-            'total_revenue': int(total_revenue),
+            'total_revenue': total_revenue,
             'items_sold': items_sold,
             'total_orders': total_orders
         })
@@ -421,44 +421,18 @@ def clear_admin_stats():
 
 @flask_app.route('/api/admin-stats/edit', methods=['POST'])
 def edit_admin_stats():
-    """ Накопительное суммирование при ручном изменении выручки, товаров и заказов """
+    """ Установка базовых (ручных) значений статистики """
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
         
-        add_revenue = int(float(data.get('total_revenue', 0)))
-        add_items = int(float(data.get('items_sold', 0)))
-        add_orders = int(float(data.get('total_orders', 0)))
+        new_revenue = int(float(data.get('total_revenue', 0)))
+        new_items = int(float(data.get('items_sold', 0)))
+        new_orders = int(float(data.get('total_orders', 0)))
 
         conn = get_db_connection()
         cur = conn.cursor()
 
-        m_rev = get_setting(cur, 'manual_revenue', None)
-        m_items = get_setting(cur, 'manual_items_sold', None)
-        m_orders = get_setting(cur, 'manual_orders_count', None)
-
-        if m_rev is not None and m_items is not None and m_orders is not None:
-            current_rev = int(float(m_rev))
-            current_items = int(float(m_items))
-            current_orders = int(float(m_orders))
-        else:
-            db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
-            rows = cur.fetchall()
-            current_orders = len(rows)
-            current_rev = 0
-            current_items = 0
-            for row in rows:
-                r_total = row['total'] if isinstance(row, dict) else row[1]
-                r_items = row['items'] if isinstance(row, dict) else row[0]
-                current_rev += float(r_total or 0)
-                if r_items:
-                    matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
-                    for m in matches:
-                        current_items += int(m)
-
-        new_revenue = current_rev + add_revenue
-        new_items = current_items + add_items
-        new_orders = current_orders + add_orders
-
+        # Сохраняем то, что ввел администратор, как новую точку отсчета
         set_setting(cur, 'manual_revenue', str(new_revenue))
         set_setting(cur, 'manual_items_sold', str(new_items))
         set_setting(cur, 'manual_orders_count', str(new_orders))
