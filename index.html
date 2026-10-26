@@ -108,7 +108,6 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
-        /* Карточка истории заказов */
         .history-card {
             background: var(--card-bg);
             backdrop-filter: blur(12px);
@@ -135,7 +134,6 @@
             margin-bottom: 4px;
         }
 
-        /* Поиск и Категории */
         .search-box {
             margin-bottom: 12px;
         }
@@ -188,7 +186,6 @@
             font-weight: 600;
         }
 
-        /* Оптимизированная сетка */
         .product-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
@@ -437,7 +434,6 @@
 
             <button class="btn" style="padding: 14px; font-size: 15px; margin-bottom: 20px;" onclick="switchTab('catalog', document.querySelectorAll('.nav-item')[1])">Перейти в каталог 🛍️</button>
 
-            <!-- Блок истории заказов клиенту -->
             <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc;">📜 История заказов</h3>
             <div id="user-orders-history">
                 <p style="color: var(--text-secondary); font-size: 13px;">Загрузка истории...</p>
@@ -452,12 +448,10 @@
             <span class="badge" id="user-role">Клиент</span>
         </div>
 
-        <!-- Поиск -->
         <div class="search-box">
             <input type="text" id="search-input" class="search-input" placeholder="🔍 Поиск по названию..." oninput="filterProducts()">
         </div>
 
-        <!-- Категории -->
         <div class="category-scroll">
             <div class="cat-chip active" onclick="selectCategory('all', this)">Все</div>
             <div class="cat-chip" onclick="selectCategory('liquids', this)">🧃 Жидкости</div>
@@ -490,12 +484,8 @@
     <div id="tab-admin" class="tab-content">
         <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 14px;">Панель управления</h2>
         
-        <!-- Блок статистики продаж -->
         <div class="admin-card" style="background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8));">
-            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc; display: flex; align-items: center; gap: 8px;">
-                <span>📊 Статистика продаж</span>
-            </h3>
-            
+            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc;">📊 Статистика продаж</h3>
             <div class="admin-stat-row">
                 <span style="color: var(--text-secondary); font-size: 13px;">Общая выручка:</span>
                 <strong id="admin-total-revenue" style="font-size: 16px; color: #10b981;">0 ₽</strong>
@@ -508,14 +498,12 @@
                 <span style="color: var(--text-secondary); font-size: 13px;">Успешных заказов:</span>
                 <strong id="admin-total-orders" style="font-size: 16px; color: #c084fc;">0</strong>
             </div>
-
             <div style="display: flex; gap: 8px; margin-top: 14px;">
-                <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 13px;" onclick="openEditStatsModal()">✏️️ Изменить</button>
+                <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 13px;" onclick="openEditStatsModal()">✏ Изменить</button>
                 <button class="btn btn-danger" style="flex: 1; padding: 8px; font-size: 13px;" onclick="clearAdminStats()">🗑 Очистить</button>
             </div>
         </div>
 
-        <!-- Блок Рассылки -->
         <div class="admin-card">
             <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">📢 Рассылка сообщений</h3>
             <div class="form-group">
@@ -581,14 +569,13 @@
         </div>
     </div>
 
-    <!-- Модальное окно просмотра товара -->
+    <!-- Модалки -->
     <div id="product-modal">
         <div class="modal-content" style="text-align: center;">
             <div id="modal-img-container" style="margin-bottom: 14px;"></div>
             <h3 id="modal-title" style="font-size: 16px; font-weight: 700; margin-bottom: 10px; color: var(--text-primary); text-align: left; word-break: break-word;"></h3>
             <div id="modal-price" style="font-size: 20px; font-weight: 700; color: #a5b4fc; margin-bottom: 6px; text-align: left;"></div>
             <div id="modal-quantity" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; text-align: left;"></div>
-            
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-secondary" style="flex: 1;" onclick="closeProductModal()">Закрыть</button>
                 <button class="btn" style="flex: 2;" id="modal-add-btn">В корзину</button>
@@ -596,7 +583,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно редактирования товара -->
     <div id="edit-modal">
         <div class="modal-content">
             <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #a5b4fc;">✏️ Редактировать товар</h3>
@@ -638,7 +624,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно редактирования статистики -->
     <div id="stats-modal">
         <div class="modal-content">
             <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #a5b4fc;">📊 Редактировать статистику</h3>
@@ -661,7 +646,7 @@
         </div>
     </div>
 
-    <!-- Нижняя навигация -->
+    <!-- Навигация -->
     <nav class="bottom-nav">
         <div class="nav-item active" onclick="switchTab('home', this)">
             <div class="nav-icon-wrapper"><span class="nav-icon">🏠</span></div>
@@ -709,7 +694,7 @@
             const roleBadge = document.getElementById('user-role');
             if(roleBadge) {
                 roleBadge.innerText = 'Администратор';
-                roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+                roleBadge.style.background = 'rgba(10, 185, 129, 0.2)';
                 roleBadge.style.color = '#10b981';
             }
         }
@@ -722,7 +707,6 @@
             }
         }
 
-        // Функция рассылки сообщений
         async function sendBroadcast() {
             const textInput = document.getElementById('broadcast-text').value.trim();
             const urlInput = document.getElementById('broadcast-image-url').value.trim();
@@ -748,19 +732,12 @@
                 const response = await fetch('/api/broadcast', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: textInput,
-                        message: textInput,
-                        image_url: imageUrl,
-                        photo_url: imageUrl,
-                        user_id: currentUserId
-                    })
+                    body: JSON.stringify({ message: textInput, image_url: imageUrl, user_id: currentUserId })
                 });
 
                 const result = await response.json().catch(() => ({}));
-
                 if (response.ok && (result.success || result.sent !== undefined)) {
-                    showAlertMessage(`Рассылка успешно отправлена!${result.sent !== undefined ? ' Доставлено: ' + result.sent : ''}`);
+                    showAlertMessage(`Рассылка успешно отправлена! Доставлено: ${result.sent || 0}`);
                     document.getElementById('broadcast-text').value = '';
                     document.getElementById('broadcast-image-url').value = '';
                     document.getElementById('broadcast-image-file').value = '';
@@ -775,7 +752,6 @@
             }
         }
 
-        // Загрузка истории заказов пользователя с сервера
         async function fetchUserOrderHistory() {
             const container = document.getElementById('user-orders-history');
             try {
@@ -790,22 +766,23 @@
                     container.innerHTML = '';
                     orders.forEach(order => {
                         let itemsHtml = '';
-                        if (Array.isArray(order.items)) {
-                            order.items.forEach(item => {
+                        if (Array.isArray(order.items_list)) {
+                            order.items_list.forEach(item => {
                                 itemsHtml += `
                                     <div class="history-item-row">
-                                        <span>• ${item.name} (x${item.cartQuantity || item.quantity || 1})</span>
-                                        <span>${(item.price * (item.cartQuantity || item.quantity || 1))} ₽</span>
+                                        <span>• ${item.name} (x${item.quantity || 1})</span>
                                     </div>
                                 `;
                             });
+                        } else {
+                            itemsHtml = `<div style="font-size: 13px; color: var(--text-secondary); white-space: pre-line;">${order.items}</div>`;
                         }
 
                         container.innerHTML += `
                             <div class="history-card">
                                 <div class="history-header">
                                     <span style="font-size: 13px; font-weight: 700; color: #a5b4fc;">Заказ №${order.id}</span>
-                                    <span style="font-size: 11px; color: var(--text-secondary);">${order.date}</span>
+                                    <span style="font-size: 11px; color: var(--text-secondary);">${order.created_at || ''}</span>
                                 </div>
                                 <div style="margin-bottom: 8px;">${itemsHtml}</div>
                                 <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 6px; font-size: 14px; font-weight: 700;">
@@ -815,11 +792,9 @@
                             </div>
                         `;
                     });
-                } else {
-                    container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Ошибка загрузки истории заказов.</p>';
                 }
             } catch (e) {
-                container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Ошибка сети.</p>';
+                container.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Ошибка загрузки истории.</p>';
             }
         }
 
@@ -844,23 +819,14 @@
                 if (response.ok && result.success) {
                     showAlertMessage('Статистика успешно сброшена!');
                     fetchAdminStats();
-                } else {
-                    showAlertMessage('Ошибка при очистке статистики');
                 }
-            } catch (e) {
-                showAlertMessage('Ошибка сети при очистке статистики');
-            }
+            } catch (e) {}
         }
 
         function openEditStatsModal() {
-            const currentRev = parseInt(document.getElementById('admin-total-revenue').innerText) || 0;
-            const currentItems = parseInt(document.getElementById('admin-items-sold').innerText) || 0;
-            const currentOrders = parseInt(document.getElementById('admin-total-orders').innerText) || 0;
-
-            document.getElementById('stat-edit-revenue').value = currentRev;
-            document.getElementById('stat-edit-items').value = currentItems;
-            document.getElementById('stat-edit-orders').value = currentOrders;
-
+            document.getElementById('stat-edit-revenue').value = parseInt(document.getElementById('admin-total-revenue').innerText) || 0;
+            document.getElementById('stat-edit-items').value = parseInt(document.getElementById('admin-items-sold').innerText) || 0;
+            document.getElementById('stat-edit-orders').value = parseInt(document.getElementById('admin-total-orders').innerText) || 0;
             document.getElementById('stats-modal').style.display = 'flex';
         }
 
@@ -869,42 +835,29 @@
         }
 
         async function saveEditedStats() {
-            const revenue = parseInt(document.getElementById('stat-edit-revenue').value) || 0;
-            const items = parseInt(document.getElementById('stat-edit-items').value) || 0;
-            const orders = parseInt(document.getElementById('stat-edit-orders').value) || 0;
-
             try {
                 const response = await fetch('/api/admin-stats/edit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        total_revenue: revenue,
-                        items_sold: items,
-                        total_orders: orders
+                        total_revenue: parseInt(document.getElementById('stat-edit-revenue').value) || 0,
+                        items_sold: parseInt(document.getElementById('stat-edit-items').value) || 0,
+                        total_orders: parseInt(document.getElementById('stat-edit-orders').value) || 0
                     })
                 });
-
-                const result = await response.json();
-                if (response.ok && result.success) {
+                if (response.ok) {
                     closeEditStatsModal();
                     fetchAdminStats();
                     showAlertMessage('Статистика обновлена!');
-                } else {
-                    showAlertMessage('Ошибка сохранения статистики');
                 }
-            } catch (e) {
-                showAlertMessage('Ошибка сети при сохранении статистики');
-            }
+            } catch (e) {}
         }
 
         async function uploadImageFile(fileInputId) {
             const fileInput = document.getElementById(fileInputId);
             if (!fileInput || !fileInput.files || fileInput.files.length === 0) return '';
-
             const formData = new FormData();
             formData.append('image', fileInput.files[0]);
-            formData.append('user_id', currentUserId);
-
             try {
                 const response = await fetch('/api/upload-image', { method: 'POST', body: formData });
                 const result = await response.json();
@@ -1000,11 +953,7 @@
             if (!p) return;
 
             const imgContainer = document.getElementById('modal-img-container');
-            if (p.image_url) {
-                imgContainer.innerHTML = `<img src="${p.image_url}" style="width: 100%; max-height: 280px; object-fit: contain; border-radius: 12px; background: #0b0f19;" alt="${p.name}">`;
-            } else {
-                imgContainer.innerHTML = '';
-            }
+            imgContainer.innerHTML = p.image_url ? `<img src="${p.image_url}" style="width: 100%; max-height: 280px; object-fit: contain; border-radius: 12px; background: #0b0f19;" alt="${p.name}">` : '';
 
             const stock = p.quantity || 0;
             const isOutOfStock = stock <= 0;
@@ -1022,12 +971,10 @@
                 addBtn.innerText = 'В корзину';
                 addBtn.className = 'btn';
                 addBtn.onclick = function() {
-                    const catalogBtn = document.getElementById(`btn-cart-${p.id}`);
-                    addToCart(p.id, catalogBtn);
+                    addToCart(p.id, document.getElementById(`btn-cart-${p.id}`));
                     closeProductModal();
                 };
             }
-
             document.getElementById('product-modal').style.display = 'flex';
         }
 
@@ -1036,7 +983,7 @@
         }
 
         async function addNewProduct() {
-            const name = document.getElementById('add-name').value;
+            const name = document.getElementById('add-name').value.trim();
             const category = document.getElementById('add-category').value;
             const price = parseFloat(document.getElementById('add-price').value);
             const quantity = parseInt(document.getElementById('add-quantity').value) || 0;
@@ -1049,30 +996,21 @@
             }
 
             let imageUrl = urlInput;
-
             if (!imageUrl) {
                 btn.innerText = 'Загрузка фото...';
                 imageUrl = await uploadImageFile('add-image-file');
             }
 
             btn.innerText = 'Сохранение...';
-            const newProd = { 
-                name: name, 
-                category: category,
-                price: price, 
-                quantity: quantity, 
-                image_url: imageUrl, 
-                user_id: currentUserId 
-            };
-            
             try {
                 const response = await fetch('/api/products', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(newProd)
+                    body: JSON.stringify({ name, category, price, quantity, image_url: imageUrl, user_id: currentUserId })
                 });
                 
-                if (response.ok) {
+                const result = await response.json();
+                if (response.ok && result.success) {
                     fetchProducts();
                     document.getElementById('add-name').value = '';
                     document.getElementById('add-price').value = '';
@@ -1081,11 +1019,14 @@
                     document.getElementById('add-image-file').value = '';
                     showAlertMessage('Товар успешно сохранен!');
                     switchTab('catalog', document.querySelectorAll('.nav-item')[1]);
+                } else {
+                    showAlertMessage('Ошибка: ' + (result.error || 'Не удалось сохранить'));
                 }
             } catch (e) {
-                showAlertMessage('Ошибка сети при добавлении товара');
+                showAlertMessage('Ошибка сети: ' + e.message);
+            } finally {
+                btn.innerText = 'Сохранить в базу';
             }
-            btn.innerText = 'Сохранить в базу';
         }
 
         function openEditModal(id, name, price, quantity, imageUrl, category) {
@@ -1095,13 +1036,7 @@
             document.getElementById('edit-price').value = price;
             document.getElementById('edit-quantity').value = quantity;
             document.getElementById('edit-old-image').value = imageUrl;
-            
-            if (imageUrl && imageUrl.startsWith('http')) {
-                document.getElementById('edit-image-url').value = imageUrl;
-            } else {
-                document.getElementById('edit-image-url').value = '';
-            }
-            
+            document.getElementById('edit-image-url').value = (imageUrl && imageUrl.startsWith('http')) ? imageUrl : '';
             document.getElementById('edit-image-file').value = '';
             document.getElementById('edit-modal').style.display = 'flex';
         }
@@ -1112,7 +1047,7 @@
 
         async function saveEditedProduct() {
             const id = document.getElementById('edit-id').value;
-            const name = document.getElementById('edit-name').value;
+            const name = document.getElementById('edit-name').value.trim();
             const category = document.getElementById('edit-category').value;
             const price = parseFloat(document.getElementById('edit-price').value);
             const quantity = parseInt(document.getElementById('edit-quantity').value) || 0;
@@ -1125,25 +1060,14 @@
             }
 
             const uploadedImage = await uploadImageFile('edit-image-file');
-            if (uploadedImage) {
-                imageUrl = uploadedImage;
-            } else if (newUrl) {
-                imageUrl = newUrl;
-            }
+            if (uploadedImage) imageUrl = uploadedImage;
+            else if (newUrl) imageUrl = newUrl;
 
             try {
                 const response = await fetch('/api/update-product', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        id: id, 
-                        name: name, 
-                        category: category,
-                        price: price, 
-                        quantity: quantity, 
-                        image_url: imageUrl, 
-                        user_id: currentUserId 
-                    })
+                    body: JSON.stringify({ id, name, category, price, quantity, image_url: imageUrl, user_id: currentUserId })
                 });
 
                 const result = await response.json();
@@ -1155,21 +1079,19 @@
                     showAlertMessage('Ошибка: ' + (result.error || 'Не удалось сохранить'));
                 }
             } catch (e) {
-                showAlertMessage('Ошибка сети при изменении товара');
+                showAlertMessage('Ошибка сети');
             }
         }
 
         async function deleteProduct(id) {
             if (!confirm('Точно удалить этот товар?')) return;
             try {
-                const response = await fetch('/api/delete-product', {
+                await fetch('/api/delete-product', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: id, user_id: currentUserId })
+                    body: JSON.stringify({ id, user_id: currentUserId })
                 });
-                if (response.ok) {
-                    fetchProducts();
-                }
+                fetchProducts();
             } catch (e) {}
         }
 
@@ -1188,38 +1110,21 @@
             cart.push(item);
             updateCart();
             
-            if (tg && tg.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('medium');
-            }
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
             if (buttonElement) {
                 buttonElement.classList.add('btn-added-anim');
-                setTimeout(() => {
-                    buttonElement.classList.remove('btn-added-anim');
-                }, 350);
-            }
-
-            const cartIconWrapper = document.getElementById('cart-icon-wrapper');
-            if (cartIconWrapper) {
-                cartIconWrapper.classList.add('cart-bounce-anim');
-                setTimeout(() => {
-                    cartIconWrapper.classList.remove('cart-bounce-anim');
-                }, 350);
+                setTimeout(() => buttonElement.classList.remove('btn-added-anim'), 350);
             }
         }
 
         function increaseCartQuantity(id) {
             const item = products.find(p => p.id === id);
             if (!item) return;
-
-            const currentInCart = cart.filter(p => p.id === id).length;
-            const available = item.quantity || 0;
-
-            if (currentInCart >= available) {
-                showAlertMessage(`В наличии осталось только ${available} шт.`);
+            if (cart.filter(p => p.id === id).length >= (item.quantity || 0)) {
+                showAlertMessage(`В наличии осталось только ${item.quantity} шт.`);
                 return;
             }
-
             cart.push(item);
             updateCart();
         }
@@ -1249,9 +1154,7 @@
 
             const itemsMap = {};
             cart.forEach(item => {
-                if (!itemsMap[item.id]) {
-                    itemsMap[item.id] = { item: item, cartQuantity: 0 };
-                }
+                if (!itemsMap[item.id]) itemsMap[item.id] = { item, cartQuantity: 0 };
                 itemsMap[item.id].cartQuantity += 1;
             });
 
@@ -1267,7 +1170,7 @@
                 list.innerHTML += `
                     <div class="cart-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                         <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 600; font-size: 14px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${p.name}</div>
+                            <div style="font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.name}</div>
                             <div style="color: #a5b4fc; font-size: 13px; margin-top: 2px;">${p.price} ₽ × ${qty} = ${itemTotal} ₽</div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">
@@ -1289,20 +1192,10 @@
 
             const itemsMap = {};
             cart.forEach(item => {
-                if (!itemsMap[item.id]) {
-                    itemsMap[item.id] = { id: item.id, name: item.name, price: item.price, cartQuantity: 0 };
-                }
+                if (!itemsMap[item.id]) itemsMap[item.id] = { id: item.id, name: item.name, price: item.price, cartQuantity: 0 };
                 itemsMap[item.id].cartQuantity += 1;
             });
             const cartList = Object.values(itemsMap);
-
-            for (let cItem of cartList) {
-                const prod = products.find(p => p.id === cItem.id);
-                if (prod && cItem.cartQuantity > (prod.quantity || 0)) {
-                    showAlertMessage(`Товара "${prod.name}" осталось всего ${prod.quantity} шт. Измените количество в корзине.`);
-                    return;
-                }
-            }
 
             let username = 'Аноним';
             let userId = currentUserId;
@@ -1315,7 +1208,7 @@
                 const response = await fetch('/api/order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId, username: username, cart: cartList })
+                    body: JSON.stringify({ user_id: userId, username, cart: cartList })
                 });
 
                 if (response.ok) {
@@ -1328,8 +1221,7 @@
                     switchTab('home', document.querySelectorAll('.nav-item')[0]);
                 } else {
                     const errJson = await response.json().catch(() => ({}));
-                    const errText = errJson.error || await response.text();
-                    showAlertMessage('Ошибка заказа: ' + errText);
+                    showAlertMessage('Ошибка заказа: ' + (errJson.error || 'Не удалось оформить'));
                 }
             } catch (error) {
                 showAlertMessage('Ошибка сети: ' + error.message);
@@ -1343,11 +1235,8 @@
             if (el) el.classList.add('active');
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
-            if (tabId === 'home') {
-                fetchUserOrderHistory();
-            } else if (tabId === 'admin') {
-                fetchAdminStats();
-            }
+            if (tabId === 'home') fetchUserOrderHistory();
+            else if (tabId === 'admin') fetchAdminStats();
         }
 
         async function uploadPdfCatalog() {
@@ -1369,11 +1258,7 @@
             btn.disabled = true;
 
             try {
-                const response = await fetch('/api/upload-pdf', { 
-                    method: 'POST', 
-                    body: formData 
-                });
-                
+                const response = await fetch('/api/upload-pdf', { method: 'POST', body: formData });
                 const result = await response.json().catch(() => ({}));
 
                 if (response.ok && result.added !== undefined) {
@@ -1381,7 +1266,7 @@
                     fileInput.value = '';
                     fetchProducts();
                 } else {
-                    showAlertMessage(`Ошибка (${response.status}): ${result.error || 'Не удалось распарсить PDF'}`);
+                    showAlertMessage('Ошибка: ' + (result.error || 'Не удалось распарсить PDF'));
                 }
             } catch (e) {
                 showAlertMessage('Ошибка сети: ' + e.message);
