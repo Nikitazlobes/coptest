@@ -150,8 +150,6 @@ def init_db():
     cur.close()
     conn.close()
 
-init_db()
-
 # --- ВЕБХУК ---
 try:
     bot.remove_webhook()
