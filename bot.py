@@ -150,6 +150,9 @@ def init_db():
     cur.close()
     conn.close()
 
+# Инициализация БД при запуске
+init_db()
+
 # --- ВЕБХУК ---
 try:
     bot.remove_webhook()
@@ -359,7 +362,6 @@ def get_admin_stats():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Считаем сумму по всем подтвержденным заказам из базы
         db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
         rows = cur.fetchall()
 
@@ -377,7 +379,6 @@ def get_admin_stats():
                 for m in matches:
                     items_from_db += int(m)
 
-        # Берем ручную базу (если она задана)
         m_rev = get_setting(cur, 'manual_revenue', None)
         m_items = get_setting(cur, 'manual_items_sold', None)
         m_orders = get_setting(cur, 'manual_orders_count', None)
@@ -389,7 +390,6 @@ def get_admin_stats():
         cur.close()
         conn.close()
 
-        # Итоговая статистика = Ручная база + Заказы из базы
         total_revenue = base_revenue + int(revenue_from_db)
         items_sold = base_items + items_from_db
         total_orders = base_orders + orders_from_db
@@ -419,7 +419,6 @@ def clear_admin_stats():
 
 @flask_app.route('/api/admin-stats/edit', methods=['POST'])
 def edit_admin_stats():
-    """ Установка базовых (ручных) значений статистики """
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
         
@@ -430,7 +429,6 @@ def edit_admin_stats():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Сохраняем то, что ввел администратор, как новую точку отсчета
         set_setting(cur, 'manual_revenue', str(new_revenue))
         set_setting(cur, 'manual_items_sold', str(new_items))
         set_setting(cur, 'manual_orders_count', str(new_orders))
@@ -450,7 +448,6 @@ def edit_admin_stats():
 
 @flask_app.route('/api/clear-all-orders', methods=['POST'])
 def clear_all_orders():
-    """ Полное удаление всей истории заказов для всех пользователей """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -615,38 +612,25 @@ def create_order():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@flask_app.route('/api/products', methods=['GET'])
-def get_products():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM products ORDER BY id DESC")
-    products = [dict(row) for row in cur.fetchall()]
-    cur.close()
-    conn.close()
-    return jsonify(products)
-
-@flask_app.route('/api/upload-image', methods=['POST'])
-def upload_image():
-    try:
-        if 'image' not in request.files:
-            return jsonify({'error': 'Файл не найден'}), 400
-        file = request.files['image']
-        if file.filename == '':
-            return jsonify({'error': 'Файл не выбран'}), 400
-
-        filename = secure_filename(file.filename)
-        unique_filename = f"{int(time.time())}_{filename}"
-        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
-        file.save(filepath)
-
-        return jsonify({'image_url': f"/{filepath}"})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@flask_app.route('/api/products', methods=['POST'])
+# --- ЕДИНЫЙ МАРШРУТ ДЛЯ ТОВАРОВ (ИСПРАВЛЕН КОНФЛИКТ GET/POST) ---
+@flask_app.route('/api/products', methods=['GET', 'POST'])
 @flask_app.route('/api/update-product', methods=['POST'])
 @flask_app.route('/api/add-product', methods=['POST'])
-def update_or_add_product():
+def handle_products():
+    if request.method == 'GET':
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM products ORDER BY id DESC")
+            products = [dict(row) for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+            return jsonify(products)
+        except Exception as e:
+            print(f"Ошибка получения товаров: {e}", flush=True)
+            return jsonify([])
+
+    # POST (добавление или обновление товара)
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
         product_id = data.get('id')
@@ -702,6 +686,24 @@ def delete_product():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'Файл не найден'}), 400
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+
+        filename = secure_filename(file.filename)
+        unique_filename = f"{int(time.time())}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.save(filepath)
+
+        return jsonify({'image_url': f"/{filepath}"})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @flask_app.route('/api/upload-pdf', methods=['POST'])
 def api_upload_pdf():
@@ -778,7 +780,7 @@ def api_upload_pdf():
 def send_broadcast():
     try:
         data = request.get_json(silent=True) or request.form.to_dict()
-        message_text = data.get('message')
+        message_text = data.get('message') or data.get('text')
         if not message_text:
             return jsonify({'success': False, 'error': 'Текст сообщения не может быть пустым'}), 400
 
