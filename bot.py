@@ -491,9 +491,9 @@ def create_order():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
         @flask_app.route('/api/products', methods=['GET', 'POST'])
-@flask_app.route('/api/update-product', methods=['POST'])
-@flask_app.route('/api/add-product', methods=['POST'])
-def handle_products():
+        @flask_app.route('/api/update-product', methods=['POST'])
+        @flask_app.route('/api/add-product', methods=['POST'])
+        def handle_products():
     if request.method == 'GET':
         try:
             conn = get_db_connection()
