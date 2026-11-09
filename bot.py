@@ -18,7 +18,6 @@ RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com
 DATABASE_URL = os.environ.get('DATABASE_URL')
 DB_NAME = 'c-opt-store.db'
 
-# Папка для загрузки изображений
 UPLOAD_FOLDER = 'static/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -229,8 +228,7 @@ def handle_all_callbacks(call):
 
     cur.close()
     conn.close()
-
-@flask_app.route('/api/user-orders', methods=['GET'])
+    @flask_app.route('/api/user-orders', methods=['GET'])
 @flask_app.route('/api/orders', methods=['GET'])
 def get_user_orders():
     try:
@@ -491,9 +489,9 @@ def create_order():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
         @flask_app.route('/api/products', methods=['GET', 'POST'])
-        @flask_app.route('/api/update-product', methods=['POST'])
-        @flask_app.route('/api/add-product', methods=['POST'])
-        def handle_products():
+@flask_app.route('/api/update-product', methods=['POST'])
+@flask_app.route('/api/add-product', methods=['POST'])
+def handle_products():
     if request.method == 'GET':
         try:
             conn = get_db_connection()
@@ -682,4 +680,4 @@ def send_broadcast():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
-    
+                        
