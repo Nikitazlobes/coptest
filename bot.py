@@ -1,561 +1,552 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>C-opt EST Store</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        :root {
-            --bg-color: #080c14;
-            --card-bg: rgba(21, 28, 44, 0.7);
-            --card-solid: #111827;
-            --card-border: rgba(255, 255, 255, 0.08);
-            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
-            --accent-hover: #4f46e5;
-            --text-primary: #f3f4f6;
-            --text-secondary: #9ca3af;
-            --success-color: #10b981;
-            --danger-color: #ef4444;
-        }
+import os
+import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import time
+import re
+import json
+import telebot
+import PyPDF2
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
+# --- НАСТРОЙКИ ---
+TOKEN = os.environ.get('BOT_TOKEN', '')
+ADMIN_ID = 1318983685
+RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
+DATABASE_URL = os.environ.get('DATABASE_URL')
+DB_NAME = 'c-opt-store.db'
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            padding-bottom: 90px;
-            overflow-x: hidden;
-            background-image: 
-                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
-                radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 40%);
-            background-attachment: fixed;
-        }
+# Папка для загрузки изображений
+UPLOAD_FOLDER = 'static/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+bot = telebot.TeleBot(TOKEN, parse_mode=None)
 
-        @keyframes pulseGlow {
-            0% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
-            50% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.4); }
-            100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
-        }
+flask_app = Flask(__name__, static_folder='.', static_url_path='')
+CORS(flask_app)
 
-        @keyframes addToCartPulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.08); background: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
-            100% { transform: scale(1); }
-        }
+def get_db_connection():
+    if DATABASE_URL:
+        url = DATABASE_URL.replace("postgres://", "postgresql://")
+        return psycopg2.connect(url, cursor_factory=RealDictCursor)
+    else:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        return conn
 
-        .btn-added-anim {
-            animation: addToCartPulse 0.35s ease;
-        }
+def db_execute(cur, sql, params=()):
+    if DATABASE_URL:
+        sql = sql.replace('?', '%s')
+    cur.execute(sql, params)
 
-        @keyframes cartBounce {
-            0%, 100% { transform: translateY(0) scale(1); }
-            50% { transform: translateY(-6px) scale(1.25); color: #10b981; }
-        }
+def get_setting(cur, key, default=None):
+    db_execute(cur, "SELECT value FROM settings WHERE key = ?", (key,))
+    row = cur.fetchone()
+    if row:
+        return row['value'] if isinstance(row, dict) else row[0]
+    return default
 
-        .cart-bounce-anim {
-            animation: cartBounce 0.35s ease;
-        }
+def set_setting(cur, key, value):
+    db_execute(cur, "DELETE FROM settings WHERE key = ?", (key,))
+    db_execute(cur, "INSERT INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
 
-        .tab-content {
-            display: none;
-            padding: 16px;
-            animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
+def detect_category(product_name: str) -> str:
+    name = product_name.lower()
+    if any(w in name for w in ['жидкость', 'жижа', 'жижка', 'liq', 'liquid', 'salt', 'солевая', 'щелочь', 'хард', 'hard']):
+        return 'Жидкости'
+    if any(w in name for w in ['картридж', 'катридж', 'испаритель', 'испар', 'coil', 'испарик', 'бак', 'карт', 'сетка']):
+        return 'Картриджи и Испарители'
+    if any(w in name for w in ['pod', 'под', 'набор', 'kit', 'устройство', 'пасито', 'pasito', 'charon', 'чарон', 'xros', 'aegis', 'knight', 'hero']):
+        return 'Устройства'
+    if any(w in name for w in ['одноразка', 'одноразовая', 'puff', 'тяг', 'bar']):
+        return 'Одноразки'
+    return 'Разное'
 
-        .tab-content.active {
-            display: block;
-        }
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if DATABASE_URL:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id SERIAL PRIMARY KEY,
+                name TEXT,
+                price REAL,
+                quantity INTEGER DEFAULT 0,
+                image_url TEXT DEFAULT '',
+                category TEXT DEFAULT 'Разное'
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                username TEXT,
+                items TEXT,
+                total REAL,
+                status TEXT DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+        """)
+        conn.commit()
+    else:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                price REAL,
+                quantity INTEGER DEFAULT 0,
+                image_url TEXT DEFAULT '',
+                category TEXT DEFAULT 'Разное'
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id BIGINT,
+                username TEXT,
+                items TEXT,
+                total REAL,
+                status TEXT DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        conn.commit()
+    
+    cur.close()
+    conn.close()
 
-        .welcome-header {
-            padding: 20px 16px 10px 16px;
-            animation: fadeIn 0.4s ease;
-        }
+init_db()
 
-        .welcome-title {
-            font-size: 22px;
-            font-weight: 800;
-            background: var(--accent-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 4px;
-        }
+try:
+    bot.remove_webhook()
+    webhook_url = f"{RENDER_URL}/webhook"
+    bot.set_webhook(url=webhook_url)
+    print(f"Вебхук установлен: {webhook_url}", flush=True)
+except Exception as e:
+    print(f"Ошибка установки вебхука: {e}", flush=True)
 
-        .welcome-subtitle {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
+@flask_app.route('/')
+def index():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, 'index.html')
+    if os.path.exists(file_path):
+        return send_file(file_path)
+    return "Файл index.html не найден", 404
 
-        .banner-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--card-border);
-            border-radius: 20px;
-            padding: 18px;
-            margin-top: 10px;
-            margin-bottom: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
+@flask_app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    return 'Forbidden', 403
 
-        .history-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 14px;
-            margin-bottom: 10px;
-        }
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    user_id = message.from_user.id
+    username = message.from_user.username or "Неизвестен"
 
-        .history-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            padding-bottom: 8px;
-            margin-bottom: 8px;
-        }
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if DATABASE_URL:
+        db_execute(cur, "INSERT INTO users (user_id, username) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username", (user_id, username))
+    else:
+        db_execute(cur, "INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        .history-item-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
+    markup = telebot.types.InlineKeyboardMarkup()
+    web_app = telebot.types.WebAppInfo(url=RENDER_URL)
+    markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть магазин C-opt EST", web_app=web_app))
+    
+    bot.send_message(
+        message.chat.id,
+        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        reply_markup=markup
+    )
 
-        .search-box {
-            margin-bottom: 12px;
-        }
+@bot.callback_query_handler(func=lambda call: True)
+def handle_all_callbacks(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
 
-        .search-input {
-            width: 100%;
-            background: rgba(17, 24, 39, 0.8);
-            border: 1px solid var(--card-border);
-            color: white;
-            padding: 12px 16px;
-            border-radius: 14px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
+    if call.from_user.id != ADMIN_ID:
+        return
 
-        .search-input:focus {
-            border-color: #6366f1;
-        }
+    data = call.data
+    if not data.startswith('order_'):
+        return
 
-        .category-scroll {
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            padding-bottom: 12px;
-            margin-bottom: 8px;
-            scrollbar-width: none;
-        }
+    parts = data.split('_')
+    if len(parts) < 3:
+        return
 
-        .category-scroll::-webkit-scrollbar {
-            display: none;
-        }
+    action = parts[1]
+    try:
+        order_id = int(parts[2])
+    except ValueError:
+        return
 
-        .cat-chip {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--card-border);
-            padding: 8px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            white-space: nowrap;
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
+    conn = get_db_connection()
+    cur = conn.cursor()
+    db_execute(cur, "SELECT * FROM orders WHERE id = ?", (order_id,))
+    order = cur.fetchone()
 
-        .cat-chip.active {
-            background: var(--accent-gradient);
-            color: white;
-            border-color: transparent;
-            font-weight: 600;
-        }
+    if not order:
+        cur.close()
+        conn.close()
+        return
 
-        .product-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
-            gap: 12px;
-            contain: layout style;
-        }
+    current_status = order['status'] if isinstance(order, dict) else order[5]
+    username = order['username'] if isinstance(order, dict) else order[2]
+    user_id = order['user_id'] if isinstance(order, dict) else order[1]
+    items_desc = order['items'] if isinstance(order, dict) else order[3]
+    total = order['total'] if isinstance(order, dict) else order[4]
 
-        .product-card {
-            background: var(--card-solid); 
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            cursor: pointer;
-            transform: translateZ(0);
-            will-change: transform;
-            transition: transform 0.15s ease;
-        }
+    if action == 'confirm':
+        if current_status == 'confirmed':
+            cur.close()
+            conn.close()
+            return
 
-        .product-card:active {
-            transform: scale(0.97) translateZ(0);
-        }
+        db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
+        conn.commit()
 
-        .product-img {
-            width: 100%;
-            height: 125px;
-            object-fit: cover;
-            border-radius: 12px;
-            margin-bottom: 8px;
-            background: #0b0f19;
-            content-visibility: auto;
-        }
+        try:
+            bot.edit_message_text(
+                f"✅ ЗАКАЗ #{order_id} ПОДТВЕРЖДЕН\n\nПользователь: @{username}\nID: {user_id}\n\nТовары:\n{items_desc}\nИтого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором и добавлен в вашу историю!")
+        except Exception as e:
+            print(f"Ошибка редактирования: {e}")
 
-        .product-title {
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: var(--text-primary);
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
+    elif action == 'cancel':
+        if current_status == 'cancelled':
+            cur.close()
+            conn.close()
+            return
 
-        .product-price {
-            font-size: 15px;
-            font-weight: 700;
-            color: #a5b4fc;
-            margin-bottom: 10px;
-        }
+        try:
+            lines = str(items_desc).strip().split('\n')
+            for line in lines:
+                match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
+                if match:
+                    prod_name = match.group(1).strip()
+                    prod_count = int(match.group(2))
+                    db_execute(cur, "UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+        except Exception as e:
+            print(f"Ошибка возврата товара: {e}", flush=True)
 
-        .btn {
-            background: var(--accent-gradient);
-            color: #ffffff;
-            border: none;
-            border-radius: 14px;
-            padding: 10px 14px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            width: 100%;
-            transition: opacity 0.2s, transform 0.1s, background 0.3s;
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
-        }
+        db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        conn.commit()
 
-        .btn:active {
-            transform: scale(0.96);
-            opacity: 0.9;
-        }
+        try:
+            bot.edit_message_text(
+                f"❌ ЗАКАЗ #{order_id} ОТМЕНЕН\n\nПользователь: @{username}\nID: {user_id}\n\nТовары:\n{items_desc}\nИтого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+            bot.send_message(user_id, f"😔 Ваш заказ #{order_id} был отменен администратором.")
+        except Exception as e:
+            print(f"Ошибка редактирования: {e}")
 
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.08);
-            box-shadow: none;
-            border: 1px solid var(--card-border);
-            color: var(--text-primary);
-        }
+    cur.close()
+    conn.close()
 
-        .btn-danger {
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: var(--danger-color);
-            box-shadow: none;
-        }
+@flask_app.route('/api/user-orders', methods=['GET'])
+@flask_app.route('/api/orders', methods=['GET'])
+def get_user_orders():
+    try:
+        user_id_raw = request.args.get('user_id')
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-        .btn-disabled {
-            background: rgba(255, 255, 255, 0.1) !important;
-            color: var(--text-secondary) !important;
-            box-shadow: none !important;
-            cursor: not-allowed !important;
-            opacity: 0.6;
-        }
+        if user_id_raw and str(user_id_raw).isdigit():
+            db_execute(cur, "SELECT * FROM orders WHERE user_id = ? AND status = 'confirmed' ORDER BY id DESC", (int(user_id_raw),))
+        else:
+            db_execute(cur, "SELECT * FROM orders ORDER BY id DESC")
 
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 72px;
-            background: rgba(11, 15, 25, 0.85);
-            backdrop-filter: blur(20px);
-            border-top: 1px solid var(--card-border);
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            z-index: 1000;
-            padding-bottom: env(safe-area-inset-bottom);
-        }
+        rows = cur.fetchall()
+        orders = []
+        for r in rows:
+            r_dict = dict(r) if isinstance(r, dict) else {
+                'id': r[0], 'user_id': r[1], 'username': r[2],
+                'items': r[3], 'total': r[4], 'status': r[5],
+                'created_at': str(r[6]) if len(r) > 6 else ''
+            }
+            
+            raw_items = str(r_dict.get('items', ''))
+            parsed_items = []
+            for line in raw_items.strip().split('\n'):
+                match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
+                if match:
+                    parsed_items.append({
+                        'name': match.group(1).strip(),
+                        'cartQuantity': int(match.group(2)),
+                        'quantity': int(match.group(2))
+                    })
+            
+            orders.append({
+                'id': r_dict.get('id'),
+                'user_id': r_dict.get('user_id'),
+                'username': r_dict.get('username'),
+                'items': raw_items,
+                'items_list': parsed_items,
+                'total': float(r_dict.get('total', 0)),
+                'status': r_dict.get('status', 'new'),
+                'created_at': str(r_dict.get('created_at', ''))
+            })
 
-        .nav-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: var(--text-secondary);
-            font-size: 10px;
-            font-weight: 500;
-            text-decoration: none;
-            cursor: pointer;
-            transition: color 0.2s, transform 0.2s;
-            flex: 1;
-        }
+        cur.close()
+        conn.close()
+        return jsonify(orders)
+    except Exception as e:
+        print(f"Ошибка получения заказов: {e}", flush=True)
+        return jsonify([])
 
-        .nav-item.active {
-            color: #818cf8;
-        }
+@flask_app.route('/api/admin-stats', methods=['GET'])
+def get_admin_stats():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-        .nav-item.active .nav-icon-wrapper {
-            background: rgba(99, 102, 241, 0.15);
-            transform: translateY(-3px);
-        }
+        db_execute(cur, "SELECT items, total FROM orders WHERE status = 'confirmed'")
+        rows = cur.fetchall()
 
-        .nav-icon-wrapper {
-            width: 36px;
-            height: 36px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 3px;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
+        orders_from_db = len(rows)
+        revenue_from_db = 0
+        items_from_db = 0
 
-        .nav-icon {
-            font-size: 18px;
-        }
+        for row in rows:
+            r_total = row['total'] if isinstance(row, dict) else row[1]
+            r_items = row['items'] if isinstance(row, dict) else row[0]
+            
+            revenue_from_db += float(r_total or 0)
+            if r_items:
+                matches = re.findall(r'x\s+(\d+)\s+шт', str(r_items))
+                for m in matches:
+                    items_from_db += int(m)
 
-        .cart-item, .admin-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 14px;
-            margin-bottom: 12px;
-        }
+        m_rev = get_setting(cur, 'manual_revenue', None)
+        m_items = get_setting(cur, 'manual_items_sold', None)
+        m_orders = get_setting(cur, 'manual_orders_count', None)
 
-        .form-group {
-            margin-bottom: 12px;
-        }
+        base_revenue = int(float(m_rev)) if m_rev is not None else 0
+        base_items = int(float(m_items)) if m_items is not None else 0
+        base_orders = int(float(m_orders)) if m_orders is not None else 0
 
-        .form-group label {
-            display: block;
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-bottom: 5px;
-            text-transform: uppercase;
-        }
+        cur.close()
+        conn.close()
 
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            background: rgba(8, 12, 20, 0.6);
-            border: 1px solid var(--card-border);
-            color: white;
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
+        total_revenue = base_revenue + int(revenue_from_db)
+        items_sold = base_items + items_from_db
+        total_orders = base_orders + orders_from_db
 
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-            border-color: #6366f1;
-        }
+        return jsonify({
+            'total_revenue': total_revenue,
+            'items_sold': items_sold,
+            'total_orders': total_orders
+        })
+    except Exception as e:
+        print(f"Ошибка получения статистики: {e}", flush=True)
+        return jsonify({'total_revenue': 0, 'items_sold': 0, 'total_orders': 0}), 500
 
-        .badge {
-            background: rgba(99, 102, 241, 0.2);
-            color: #818cf8;
-            padding: 4px 10px;
-            border-radius: 8px;
-            font-size: 11px;
-            font-weight: 600;
-        }
+@flask_app.route('/api/admin-stats/clear', methods=['POST'])
+def clear_admin_stats():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        db_execute(cur, "DELETE FROM settings WHERE key IN ('manual_revenue', 'manual_items_sold', 'manual_orders_count')")
+        db_execute(cur, "UPDATE orders SET status = 'archived' WHERE status = 'confirmed'")
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        #edit-modal, #product-modal, #stats-modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(8px);
-            z-index: 2000;
-            justify-content: center;
-            align-items: center;
-            padding: 16px;
-        }
+@flask_app.route('/api/admin-stats/edit', methods=['POST'])
+def edit_admin_stats():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        new_revenue = int(float(data.get('total_revenue', 0)))
+        new_items = int(float(data.get('items_sold', 0)))
+        new_orders = int(float(data.get('total_orders', 0)))
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        set_setting(cur, 'manual_revenue', str(new_revenue))
+        set_setting(cur, 'manual_items_sold', str(new_items))
+        set_setting(cur, 'manual_orders_count', str(new_orders))
+        conn.commit()
+        cur.close()
+        conn.close()
         
-        .modal-content {
-            background: #111827;
-            border: 1px solid var(--card-border);
-            border-radius: 20px;
-            padding: 20px;
-            width: 100%;
-            max-width: 400px;
-            max-height: 90vh;
-            overflow-y: auto;
-            animation: fadeIn 0.3s ease;
-        }
+        return jsonify({
+            'success': True, 
+            'total_revenue': new_revenue, 
+            'items_sold': new_items, 
+            'total_orders': new_orders
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        .admin-stat-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .admin-stat-row:last-child {
-            border-bottom: none;
-        }
-    </style>
-</head>
-<body>
-
-    <!-- Главная вкладка -->
-    <div id="tab-home" class="tab-content active">
-        <div class="welcome-header">
-            <div class="welcome-title" id="welcome-msg">Привет, гость!</div>
-            <div class="welcome-subtitle">Оптовый склад · Быстрое оформление</div>
-        </div>
-
-        <div style="padding: 0 16px;">
-            <div class="banner-card" style="animation: pulseGlow 4s infinite;">
-                <div style="font-weight: 700; font-size: 16px; margin-bottom: 6px;">📢 Присоединяйся в канал</div>
-                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Следи за новостями, новыми поставками и акциями C-opt EST</div>
-                <button class="btn" style="width: auto; padding: 8px 16px;" onclick="window.open('https://t.me/+qSzldxTh8Zk5MDUy', '_blank')">Открыть канал</button>
-            </div>
-
-            <button class="btn" style="padding: 14px; font-size: 15px; margin-bottom: 20px;" onclick="switchTab('catalog', document.querySelectorAll('.nav-item')[1])">Перейти в каталог 🛍️</button>
-
-            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc;">📜 История заказов</h3>
-            <div id="user-orders-history">
-                <p style="color: var(--text-secondary); font-size: 13px;">Загрузка истории...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Каталог -->
-    <div id="tab-catalog" class="tab-content">
-        <div style="padding: 4px 4px 10px 4px; display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="font-size: 18px; font-weight: 700;">Каталог товаров</h2>
-            <span class="badge" id="user-role">Клиент</span>
-        </div>
-
-        <div class="search-box">
-            <input type="text" id="search-input" class="search-input" placeholder="🔍 Поиск по названию..." oninput="filterProducts()">
-        </div>
-
-        <div class="category-scroll">
-            <div class="cat-chip active" onclick="selectCategory('all', this)">Все</div>
-            <div class="cat-chip" onclick="selectCategory('Жидкости', this)">🧃 Жидкости</div>
-            <div class="cat-chip" onclick="selectCategory('Устройства', this)">💨 Устройства</div>
-            <div class="cat-chip" onclick="selectCategory('Картриджи и Испарители', this)">⚡ Картриджи</div>
-            <div class="cat-chip" onclick="selectCategory('Одноразки', this)">🚬 Одноразки</div>
-            <div class="cat-chip" onclick="selectCategory('Разное', this)">📦 Разное</div>
-        </div>
-
-        <div class="product-grid" id="product-list">
-            <p style="color: var(--text-secondary);">Загрузка товаров...</p>
-        </div>
-    </div>
-
-    <!-- Корзина -->
-    <div id="tab-cart" class="tab-content">
-        <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 14px;">Ваша корзина</h2>
-        <div id="cart-list">
-            <p style="color: var(--text-secondary);">Корзина пуста</p>
-        </div>
-        <div id="cart-summary" style="margin-top: 20px; display: none;">
-            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; margin-bottom: 14px; background: var(--card-bg); padding: 16px; border-radius: 16px; border: 1px solid var(--card-border);">
-                <span>Итого:</span>
-                <span id="cart-total" style="color: #a5b4fc;">0 ₽</span>
-            </div>
-            <button class="btn" style="padding: 14px; font-size: 16px;" onclick="checkout()">Оформить заказ</button>
-        </div>
-    </div>
-
-    <!-- Админка -->
-    <div id="tab-admin" class="tab-content">
-        <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 14px;">Панель управления</h2>
+@flask_app.route('/api/order', methods=['POST'])
+def create_order():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        user_id = data.get('user_id')
+        username = data.get('username', 'Неизвестен')
+        cart = data.get('cart', [])
         
-        <div class="admin-card" style="background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8));">
-            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #a5b4fc;">📊 Статистика продаж</h3>
-            <div class="admin-stat-row">
-                <span style="color: var(--text-secondary); font-size: 13px;">Общая выручка:</span>
-                <strong id="admin-total-revenue" style="font-size: 16px; color: #10b981;">0 ₽</strong>
-            </div>
-            <div class="admin-stat-row">
-                <span style="color: var(--text-secondary); font-size: 13px;">Продано товаров:</span>
-                <strong id="admin-items-sold" style="font-size: 16px; color: #38bdf8;">0 шт.</strong>
-            </div>
-            <div class="admin-stat-row">
-                <span style="color: var(--text-secondary); font-size: 13px;">Успешных заказов:</span>
-                <strong id="admin-total-orders" style="font-size: 16px; color: #c084fc;">0</strong>
-            </div>
-            <div style="display: flex; gap: 8px; margin-top: 14px;">
-                <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 13px;" onclick="openEditStatsModal()">✏ Изменить</button>
-                <button class="btn btn-danger" style="flex: 1; padding: 8px; font-size: 13px;" onclick="clearAdminStats()">🗑 Очистить</button>
-            </div>
-        </div>
+        if isinstance(cart, str):
+            try:
+                cart = json.loads(cart)
+            except Exception:
+                cart = []
 
-        <div class="admin-card">
-            <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">📢 Рассылка сообщений</h3>
-            <div class="form-group">
-                <label>Текст сообщения</label>
-                <textarea id="broadcast-text" rows="4" placeholder="Введите текст рассылки всем пользователям..."></textarea>
-            </div>
-            <button class="btn" onclick="sendBroadcast()" id="broadcast-btn">Отправить всем</button>
-        </div>
+        if not user_id or not str(user_id).isdigit():
+            user_id = ADMIN_ID
+        else:
+            user_id = int(user_id)
 
-        <div class="admin-card">
-            <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">➕ Добавить товар</h3>
-            <div class="form-group">
-                <label>Название товара</label>
-                <input type="text" id="add-name" placeholder="Пример: Husky Mint 30ml">
-            </div>
-            <div class="form-group">
-                <label>Категория</label>
-                <select id="add-category">
-                    <option value="Жидкости">🧃 Жидкости</option>
-                    <option value="Устройства">💨 Устройства</option>
-                    <option value="Картриджи и Испарители">⚡ Картриджи и Испарители</option>
-                    <option value="Одноразки">🚬 Одноразки</option>
-                    <option value="Разное">📦 Разное</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Цена (руб)</label>
-                <input type="number" id="add-price" placeholder="450">
-            </div>
-            <div class="form-group">
-                <label>Количество (шт)</label>
-                <input type="number" id="add-quantity" value="10" placeholder="10">
-            </div>
-            <div class="form-group">
-                <label>Ссылка на фото (URL)</label>
-                <input type="url" id="add-image-url" placeholder="https://i.ibb.co/example/photo.jpg">
-            </div>
-            <div class="form-group">
-                <label>Или загрузить файл</label>
-                <input type="file" id="add-image-file" accept="image/*" style="padding: 6px;">
-            </div>
-            <button class="btn" onclick="addNewProduct()" id="add-btn">Сохранить в базу</button>
-        </div>
+        if not cart:
+            return jsonify({'success': False, 'error': 'Корзина пуста'}), 400
+            
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-        <div class="admin-card">
-            <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #a5b4fc;">📄 Загрузить из PDF</h3>
-            <div class="form-group">
-                <label>PDF-файл с прайсом</label>
-                <input type="file" id="pdf-file" accept=".pdf" style="padding: 6px;">
-            </div>
-            <div class="form-group">
-                <label>Наценка (+₽)</label>
-                <input type="number" id="markup-rubles" value="150" placeholder="150">
- 
+        if DATABASE_URL:
+            db_execute(cur, "INSERT INTO users (user_id, username) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username", (user_id, username))
+        else:
+            db_execute(cur, "INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+
+        for item in cart:
+            p_id = item.get('id')
+            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
+            name = item.get('name', 'Товар')
+
+            if p_id:
+                db_execute(cur, "SELECT name, quantity FROM products WHERE id = ?", (p_id,))
+            else:
+                db_execute(cur, "SELECT name, quantity FROM products WHERE name = ?", (name,))
+                
+            prod = cur.fetchone()
+            if prod:
+                stock = prod['quantity'] if isinstance(prod, dict) else prod[1]
+                p_name = prod['name'] if isinstance(prod, dict) else prod[0]
+                if qty > stock:
+                    cur.close()
+                    conn.close()
+                    return jsonify({'success': False, 'error': f"Товара '{p_name}' осталось только {stock} шт."}), 400
+            else:
+                cur.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f"Товар '{name}' не найден в базе"}), 400
+
+        total = 0
+        items_text = ""
+        items_client_text = ""
+        
+        for item in cart:
+            price = int(item.get('price', 0))
+            qty = int(item.get('cartQuantity', item.get('quantity', 1)))
+            name = item.get('name', 'Товар')
+            p_id = item.get('id')
+            
+            total += price * qty
+            items_text += f"• {name} x {qty} шт. (по {price} руб.)\n"
+            items_client_text += f"• {name} x {qty} шт.\n"
+            
+            if p_id:
+                if DATABASE_URL:
+                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
+                else:
+                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE id = ?", (qty, p_id))
+            else:
+                if DATABASE_URL:
+                    db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE name = ?", (qty, name))
+                else:
+                    db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE name = ?", (qty, name))
+        
+        if DATABASE_URL:
+            cur.execute(
+                "INSERT INTO orders (user_id, username, items, total, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (user_id, username, items_text, total, 'new')
+            )
+            order_id = cur.fetchone()['id']
+        else:
+            cur.execute(
+                "INSERT INTO orders (user_id, username, items, total, status) VALUES (?, ?, ?, ?, ?)",
+                (user_id, username, items_text, total, 'new')
+            )
+            order_id = cur.lastrowid
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        markup = telebot.types.InlineKeyboardMarkup()
+        btn_confirm = telebot.types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"order_confirm_{order_id}")
+        btn_cancel = telebot.types.InlineKeyboardButton("❌ Отменить", callback_data=f"order_cancel_{order_id}")
+        markup.add(btn_confirm, btn_cancel)
+        
+        admin_text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\nПользователь: @{username} (ID: {user_id})\n\nТовары:\n{items_text}\n💰 Итого: {total} руб."
+        try:
+            bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
+        except Exception as e:
+            print(f"Ошибка отправки админу: {e}")
+
+        client_text = (
+            f"🎉 Ваш заказ успешно оформлен!\n\n"
+            f"🔢 Номер заказа: #{order_id}\n\n"
+            f"📦 Состав заказа:\n{items_client_text}\n"
+            f"💰 Итого к оплате: {total} руб.\n\n"
+            f"⏳ Ожидайте подтверждения от администратора."
+        )
+        try:
+            bot.send_message(user_id, client_text)
+        except Exception as e:
+            print(f"Ошибка отправки клиенту: {e}")
+            
+        return jsonify({'success': True, 'order_id': order_id})
+
+    except Exception as e:
+        return jsonify({'su
