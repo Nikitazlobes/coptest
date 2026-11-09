@@ -69,76 +69,16 @@ def init_db():
     cur = conn.cursor()
     
     if DATABASE_URL:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                username TEXT,
-                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS products (
-                id SERIAL PRIMARY KEY,
-                name TEXT,
-                price REAL,
-                quantity INTEGER DEFAULT 0,
-                image_url TEXT DEFAULT '',
-                category TEXT DEFAULT 'Разное'
-            );
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT,
-                username TEXT,
-                items TEXT,
-                total REAL,
-                status TEXT DEFAULT 'new',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
-        """)
+        cur.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, username TEXT, joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+        cur.execute("CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, name TEXT, price REAL, quantity INTEGER DEFAULT 0, image_url TEXT DEFAULT '', category TEXT DEFAULT 'Разное');")
+        cur.execute("CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, user_id BIGINT, username TEXT, items TEXT, total REAL, status TEXT DEFAULT 'new', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+        cur.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);")
         conn.commit()
     else:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                username TEXT,
-                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                price REAL,
-                quantity INTEGER DEFAULT 0,
-                image_url TEXT DEFAULT '',
-                category TEXT DEFAULT 'Разное'
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id BIGINT,
-                username TEXT,
-                items TEXT,
-                total REAL,
-                status TEXT DEFAULT 'new',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        """)
+        cur.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, username TEXT, joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cur.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price REAL, quantity INTEGER DEFAULT 0, image_url TEXT DEFAULT '', category TEXT DEFAULT 'Разное')")
+        cur.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id BIGINT, username TEXT, items TEXT, total REAL, status TEXT DEFAULT 'new', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cur.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
         conn.commit()
     
     cur.close()
@@ -549,4 +489,197 @@ def create_order():
         return jsonify({'success': True, 'order_id': order_id})
 
     except Exception as e:
-        return jsonify({'su
+        return jsonify({'success': False, 'error': str(e)}), 500
+        @flask_app.route('/api/products', methods=['GET', 'POST'])
+@flask_app.route('/api/update-product', methods=['POST'])
+@flask_app.route('/api/add-product', methods=['POST'])
+def handle_products():
+    if request.method == 'GET':
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM products ORDER BY id DESC")
+            products = [dict(row) for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+            return jsonify(products)
+        except Exception as e:
+            print(f"Ошибка получения товаров: {e}", flush=True)
+            return jsonify([])
+
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        product_id = data.get('id')
+        name = data.get('name')
+        price = data.get('price')
+        quantity = data.get('quantity', 0)
+        image_url = data.get('image_url', '')
+        category = data.get('category')
+
+        if not name or price is None:
+            return jsonify({'success': False, 'error': 'Заполните название и цену'}), 400
+
+        if not category or category == 'Разное':
+            category = detect_category(name)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if product_id:
+            db_execute(cur, "UPDATE products SET name = ?, price = ?, quantity = ?, image_url = ?, category = ? WHERE id = ?", (name, float(price), int(quantity), image_url, category, product_id))
+        else:
+            db_execute(cur, "INSERT INTO products (name, price, quantity, image_url, category) VALUES (?, ?, ?, ?, ?)", (name, float(price), int(quantity), image_url, category))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/delete-product', methods=['POST'])
+def delete_product():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        product_id = data.get('id')
+        if not product_id:
+            return jsonify({'success': False, 'error': 'ID товара не передан'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        db_execute(cur, "DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@flask_app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'Файл не найден'}), 400
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+
+        filename = secure_filename(file.filename)
+        unique_filename = f"{int(time.time())}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.save(filepath)
+
+        return jsonify({'image_url': f"/{filepath}"})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@flask_app.route('/api/upload-pdf', methods=['POST'])
+def api_upload_pdf():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Файл не найден в запросе'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+
+        markup_rubles = int(request.form.get('markup_rubles', 0))
+        pdf_reader = PyPDF2.PdfReader(file)
+        full_text = ""
+        for page in pdf_reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                full_text += extracted + "\n"
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        added_count = 0
+        
+        pattern = r'(\d+[\s\d]*[.,]\d{2})\s*(\d+)\s*шт\s*\d+[\s\d]*[.,]\d{2}\s*(\d+)?'
+        matches = list(re.finditer(pattern, full_text, re.IGNORECASE))
+        
+        last_end = 0
+        for match in matches:
+            price_str = match.group(1).replace(' ', '').replace(',', '.')
+            qty_str = match.group(2)
+            
+            try:
+                base_price = float(price_str)
+                if base_price < 10:
+                    continue
+                    
+                final_price = int(base_price + markup_rubles)
+                quantity = int(qty_str) if qty_str else 1
+                
+                raw_name = full_text[last_end:match.start()].strip()
+                last_end = match.end()
+                
+                clean_name = re.sub(r'^\d+[\.\)]?\s*', '', raw_name).strip()
+                clean_name = clean_name.replace('\n', ' ').replace('|', '').strip()
+                
+                if any(w in clean_name.lower() for w in ["mg opt", "заказ №", "заказчик", "наименование", "итого"]):
+                    continue
+
+                if len(clean_name) > 2:
+                    category = detect_category(clean_name)
+                    
+                    db_execute(cur, "SELECT id, quantity FROM products WHERE name = ?", (clean_name,))
+                    existing = cur.fetchone()
+                    if existing:
+                        p_id = existing['id'] if isinstance(existing, dict) else existing[0]
+                        p_qty = existing['quantity'] if isinstance(existing, dict) else existing[1]
+                        new_qty = (p_qty or 0) + quantity
+                        db_execute(cur, "UPDATE products SET price = ?, quantity = ?, category = ? WHERE id = ?", (final_price, new_qty, category, p_id))
+                    else:
+                        db_execute(cur, "INSERT INTO products (name, price, quantity, category) VALUES (?, ?, ?, ?)", (clean_name, final_price, quantity, category))
+                    added_count += 1
+            except ValueError:
+                pass
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True, 'added': added_count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@flask_app.route('/api/broadcast', methods=['POST'])
+def send_broadcast():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict()
+        message_text = data.get('message') or data.get('text')
+        if not message_text:
+            return jsonify({'success': False, 'error': 'Текст сообщения не может быть пустым'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT user_id FROM users")
+        users = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        sent_count, fail_count = 0, 0
+        markup = telebot.types.InlineKeyboardMarkup()
+        web_app = telebot.types.WebAppInfo(url=RENDER_URL)
+        markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть каталог", web_app=web_app))
+
+        for u in users:
+            uid = u['user_id'] if isinstance(u, dict) else u[0]
+            try:
+                bot.send_message(uid, message_text, reply_markup=markup)
+                sent_count += 1
+                time.sleep(0.05)
+            except Exception as e:
+                print(f"Ошибка отправки пользователю {uid}: {e}", flush=True)
+                fail_count += 1
+
+        return jsonify({'success': True, 'sent': sent_count, 'failed': fail_count})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    flask_app.run(host='0.0.0.0', port=port)
+    
