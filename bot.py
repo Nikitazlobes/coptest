@@ -198,7 +198,9 @@ def webhook():
         bot.process_new_updates([update])
         return '', 200
     return 'Forbidden', 403
-    @bot.message_handler(commands=['start'])
+
+
+@bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name or "Неизвестен"
@@ -468,7 +470,9 @@ def edit_admin_stats():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-        @flask_app.route('/api/order', methods=['POST'])
+
+
+@flask_app.route('/api/order', methods=['POST'])
 def create_order():
     try:
         data = request.get_json(silent=True) or request.form.to_dict() or {}
@@ -539,6 +543,7 @@ def create_order():
 
             if p_id:
                 if DATABASE_URL:
+                               if DATABASE_URL:
                     db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
                 else:
                     db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE id = ?", (qty, p_id))
@@ -818,4 +823,3 @@ def send_broadcast():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
-    
