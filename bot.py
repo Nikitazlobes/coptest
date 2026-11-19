@@ -468,7 +468,7 @@ def edit_admin_stats():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-       @flask_app.route('/api/order', methods=['POST'])
+        @flask_app.route('/api/order', methods=['POST'])
 def create_order():
     try:
         data = request.get_json(silent=True) or request.form.to_dict() or {}
@@ -818,3 +818,4 @@ def send_broadcast():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
+    
