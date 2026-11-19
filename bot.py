@@ -543,7 +543,6 @@ def create_order():
 
             if p_id:
                 if DATABASE_URL:
-                               if DATABASE_URL:
                     db_execute(cur, "UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?", (qty, p_id))
                 else:
                     db_execute(cur, "UPDATE products SET quantity = MAX(0, quantity - ?) WHERE id = ?", (qty, p_id))
