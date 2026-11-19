@@ -1,4 +1,3 @@
-# === BOT.PY ЧАСТЬ 1 (НАЧАЛО) ===
 import os
 import sqlite3
 import psycopg2
@@ -16,7 +15,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 # --- НАСТРОЙКИ ---
-TOKEN = os.environ.get('BOT_TOKEN', '8200689571:AAGP6tOkzyXJNwIs7oYGnmm55YQrxkPRTlk')
+TOKEN = '8200689571:AAGP6tOkzyXJNwIs7oYGnmm55YQrxkPRTlk'
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -178,9 +177,7 @@ if TOKEN:
         print(f"Ошибка установки вебхука: {e}", flush=True)
 else:
     print("ВНИМАНИЕ: переменная BOT_TOKEN не задана!", flush=True)
-
-
-@flask_app.route('/')
+    @flask_app.route('/')
 def index():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(base_dir, 'index.html')
@@ -264,7 +261,68 @@ def handle_all_callbacks(call):
         cur.close()
         conn.close()
         return
-        # === BOT.PY ЧАСТЬ 2 (НАЧАЛО) ===
+
+    current_status = order['status'] if isinstance(order, dict) else order[5]
+    username = order['username'] if isinstance(order, dict) else order[2]
+    user_id = order['user_id'] if isinstance(order, dict) else order[1]
+    items_desc = order['items'] if isinstance(order, dict) else order[3]
+    total = order['total'] if isinstance(order, dict) else order[4]
+
+    if action == 'confirm':
+        if current_status == 'confirmed':
+            cur.close()
+            conn.close()
+            return
+
+        db_execute(cur, "UPDATE orders SET status = 'confirmed' WHERE id = ?", (order_id,))
+        conn.commit()
+
+        try:
+            bot.edit_message_text(
+                f"✅ ЗАКАЗ #{order_id} ПОДТВЕРЖДЕН\n\nПользователь: @{username}\nID: {user_id}\n\nТовары:\n{items_desc}\nИтого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+            bot.send_message(user_id, f"🎉 Ваш заказ #{order_id} подтвержден администратором и добавлен в вашу историю!")
+        except Exception as e:
+            print(f"Ошибка редактирования: {e}", flush=True)
+
+    elif action == 'cancel':
+        if current_status == 'cancelled':
+            cur.close()
+            conn.close()
+            return
+
+        try:
+            lines = str(items_desc).strip().split('\n')
+            for line in lines:
+                match = re.search(r'•\s+(.+?)\s+x\s+(\d+)\s+шт', line)
+                if match:
+                    prod_name = match.group(1).strip()
+                    prod_count = int(match.group(2))
+                    db_execute(cur, "UPDATE products SET quantity = quantity + ? WHERE name = ?", (prod_count, prod_name))
+        except Exception as e:
+            print(f"Ошибка возврата товара: {e}", flush=True)
+
+        db_execute(cur, "UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        conn.commit()
+
+        try:
+            bot.edit_message_text(
+                f"❌ ЗАКАЗ #{order_id} ОТМЕНЕН\n\nПользователь: @{username}\nID: {user_id}\n\nТовары:\n{items_desc}\nИтого: {total} руб.",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+            bot.send_message(user_id, f"😔 Ваш заказ #{order_id} был отменен администратором.")
+        except Exception as e:
+            print(f"Ошибка редактирования: {e}", flush=True)
+
+    cur.close()
+    conn.close()
+
+
 @flask_app.route('/api/user-orders', methods=['GET'])
 @flask_app.route('/api/orders', methods=['GET'])
 def get_user_orders():
@@ -410,9 +468,7 @@ def edit_admin_stats():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@flask_app.route('/api/order', methods=['POST'])
+       @flask_app.route('/api/order', methods=['POST'])
 def create_order():
     try:
         data = request.get_json(silent=True) or request.form.to_dict() or {}
@@ -538,8 +594,8 @@ def create_order():
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-# === BOT.PY ЧАСТЬ 2 (КОНЕЦ) ===
-# === BOT.PY ЧАСТЬ 3 (НАЧАЛО) ===
+
+
 @flask_app.route('/api/products', methods=['GET', 'POST'])
 @flask_app.route('/api/update-product', methods=['POST'])
 @flask_app.route('/api/add-product', methods=['POST'])
@@ -762,4 +818,3 @@ def send_broadcast():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port)
-# === BOT.PY ЧАСТЬ 3 (КОНЕЦ) ===
