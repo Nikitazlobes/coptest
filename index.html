@@ -1,272 +1,779 @@
-import os
-import requests
-from flask import Flask, request, jsonify, send_from_directory
-import telebot
-from werkzeug.utils import secure_filename
-from pypdf import PdfReader
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>C-opt EST</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --surface: #141821;
+      --surface-2: #1c2230;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --line: #262e3d;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+    }
 
-# Инициализация Flask и Telebot
-flask_app = Flask(__name__)
-BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-bot = telebot.TeleBot(BOT_TOKEN)
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-UPLOAD_FOLDER = 'uploads'
-os.makedirs(UPLOAD_FOLDER, flask_app.config['UPLOAD_FOLDER'] if 'UPLOAD_FOLDER' in flask_app.config else UPLOAD_FOLDER)
-flask_app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    body {
+      margin: 0;
+      padding: 0 0 80px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
 
-# Простая база данных (или подключение к Neon PostgreSQL)
-import psycopg2
-import psycopg2.extras
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(11, 13, 18, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+    }
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://user:password@host/dbname')
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
 
-def get_db_connection():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-    return conn
+    .brand-title { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+    .brand-sub { font-size: 11px; color: var(--muted); }
 
-@flask_app.route('/')
-def index():
-    return send_from_directory('.', 'index.html')
+    .nav {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
 
-@flask_app.route('/api/products', methods=['GET'])
-def api_get_products():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, name, price, quantity, category, image_url FROM products ORDER BY id DESC;")
-        products = cur.fetchall()
-        cur.close()
-        conn.close()
-        return jsonify(products)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .nav-btn {
+      padding: 8px 6px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
 
-@flask_app.route('/api/products', methods=['POST'])
-def api_add_product():
-    try:
-        data = request.json
-        name = data.get('name')
-        category = data.get('category', 'other')
-        price = float(data.get('price', 0))
-        quantity = int(data.get('quantity', 0))
-        image_url = data.get('image_url', '')
+    .nav-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO products (name, category, price, quantity, image_url) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
-            (name, category, price, quantity, image_url)
-        )
-        new_id = cur.fetchone()['id']
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True, 'id': new_id})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .wrap { padding: 12px; }
+    .hidden { display: none !important; }
 
-@flask_app.route('/api/update-product', methods=['POST'])
-def api_update_product():
-    try:
-        data = request.json
-        p_id = data.get('id')
-        name = data.get('name')
-        category = data.get('category', 'other')
-        price = float(data.get('price', 0))
-        quantity = int(data.get('quantity', 0))
-        image_url = data.get('image_url', '')
+    .search {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 10px;
+      outline: none;
+    }
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE products SET name = %s, category = %s, price = %s, quantity = %s, image_url = %s WHERE id = %s;",
-            (name, category, price, quantity, image_url, p_id)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .search:focus { border-color: var(--accent); }
 
-@flask_app.route('/api/delete-product', methods=['POST'])
-def api_delete_product():
-    try:
-        data = request.json
-        p_id = data.get('id')
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM products WHERE id = %s;", (p_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .cats {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+      scrollbar-width: none;
+    }
+    .cats::-webkit-scrollbar { display: none; }
 
-@flask_app.route('/api/order', methods=['POST'])
-def api_order():
-    try:
-        data = request.json
-        user_id = str(data.get('user_id', ''))
-        username = data.get('username', 'Аноним')
-        cart = data.get('cart', [])
-        
-        total = sum(item['price'] * item['cartQuantity'] for item in cart)
-        import json
-        items_str = json.dumps(cart, ensure_ascii=False)
+    .chip {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO orders (user_id, username, items, total, status) VALUES (%s, %s, %s, %s, %s);",
-            (user_id, username, items_str, total, 'new')
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .chip.active {
+      background: rgba(59, 130, 246, 0.18);
+      border-color: var(--accent);
+      color: #fff;
+    }
 
-@flask_app.route('/api/user-orders', methods=['GET'])
-def api_user_orders():
-    try:
-        user_id = request.args.get('user_id')
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, items, total, status, created_at FROM orders WHERE user_id = %s ORDER BY id DESC;", (str(user_id),))
-        orders = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        import json
-        for o in orders:
-            try:
-                o['items_list'] = json.loads(o['items'])
-            except:
-                o['items_list'] = []
-        return jsonify(orders)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
 
-@flask_app.route('/api/admin-stats', methods=['GET'])
-def api_admin_stats():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT SUM(total) as revenue, COUNT(*) as orders FROM orders;")
-        res = cur.fetchone()
-        cur.close()
-        conn.close()
-        return jsonify({
-            'total_revenue': res['revenue'] or 0,
-            'total_orders': res['orders'] or 0,
-            'items_sold': 0
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
 
-@flask_app.route('/api/admin-stats/clear', methods=['POST'])
-def api_clear_stats():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM orders;")
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .thumb {
+      width: 100%;
+      height: 112px;
+      border-radius: 10px;
+      background: var(--surface-2);
+      object-fit: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
 
-@flask_app.route('/api/admin-stats/edit', methods=['POST'])
-def api_edit_stats():
-    return jsonify({'success': True})
+    .name { font-size: 13px; font-weight: 600; line-height: 1.3; }
+    .cat-tag { font-size: 11px; color: var(--muted); }
+    .stock { font-size: 11px; color: var(--muted); }
+    .price { font-size: 15px; font-weight: 700; color: var(--ok); }
 
-@flask_app.route('/api/upload-image', methods=['POST'])
-def api_upload_image():
-    if 'image' not in request.files:
-        return jsonify({'error': 'No file'}), 400
-    file = request.files['image']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(flask_app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-    return jsonify({'image_url': f'/uploads/{filename}'})
+    .btn {
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
 
-@flask_app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(flask_app.config['UPLOAD_FOLDER'], filename)
+    .btn:active { background: var(--accent-hover); }
+    .btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+    .btn.danger { background: var(--err); }
+    .btn.sm { width: auto; padding: 6px 10px; font-size: 12px; }
 
-@flask_app.route('/api/upload-pdf', methods=['POST'])
-def api_upload_pdf():
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'Файл не выбран'}), 400
-        
-        file = request.files['file']
-        markup = float(request.form.get('markup_rubles', 0))
-        
-        filepath = os.path.join(flask_app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-        file.save(filepath)
-        
-        reader = PdfReader(filepath)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-            
-        import re
-        lines = text.split('\n')
-        added = 0
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        for line in lines:
-            match = re.search(r'(.+?)\s+(\d+[\s\d]*[.,]\d{2})\s+(\d+)\s*шт', line)
-            if match:
-                name = match.group(1).strip()
-                base_price = float(match.group(2).replace(' ', '').replace(',', '.'))
-                price = base_price + markup
-                qty = int(match.group(3))
-                
-                cur.execute(
-                    "INSERT INTO products (name, price, quantity, category) VALUES (%s, %s, %s, %s);",
-                    (name, price, qty, 'liquids')
-                )
-                added += 1
-                
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True, 'added': added})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .box {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
 
-@flask_app.route('/api/broadcast', methods=['POST'])
-def api_broadcast():
-    try:
-        data = request.json
-        msg = data.get('message')
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT DISTINCT user_id FROM orders;")
-        users = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        sent = 0
-        for u in users:
-            try:
-                bot.send_message(u['user_id'], msg)
-                sent += 1
-            except:
-                pass
-        return jsonify({'success': True, 'sent': sent})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    .box-title { font-size: 14px; font-weight: 700; margin: 0 0 10px; }
 
-if __name__ == '__main__':
-    flask_app.run(host='0.0.0.0', port=5000)
-    
+    .item-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+    }
+    .item-row:last-child { border-bottom: none; }
+
+    .qty-ctrl { display: flex; align-items: center; gap: 6px; }
+      
+    .field {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .stat-card {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .stat-val { font-size: 15px; font-weight: 700; color: var(--ok); }
+    .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .toast {
+      position: fixed;
+      bottom: 16px;
+      left: 12px;
+      right: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      text-align: center;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-title">C-opt EST</div>
+      <div class="brand-sub" id="userBadge">Загрузка...</div>
+    </div>
+    <div class="nav">
+      <button class="nav-btn active" id="nav-catalog" onclick="setTab('catalog')">Каталог</button>
+      <button class="nav-btn" id="nav-cart" onclick="setTab('cart')">Корзина (<span id="badgeCart">0</span>)</button>
+      <button class="nav-btn" id="nav-orders" onclick="setTab('orders')">Заказы</button>
+      <button class="nav-btn hidden" id="nav-admin" onclick="setTab('admin')">Админ</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <!-- КАТАЛОГ -->
+    <div id="view-catalog">
+      <input class="search" type="text" id="searchInput" placeholder="Поиск по названию..." oninput="renderCatalog()" />
+      <div class="cats" id="catChips"></div>
+      <div class="grid" id="catalogGrid"></div>
+    </div>
+
+    <!-- КОРЗИНА -->
+    <div id="view-cart" class="hidden">
+      <div class="box">
+        <div class="box-title">Корзина</div>
+        <div id="cartItems"></div>
+      </div>
+      <button class="btn" id="btnOrder" onclick="sendOrder()">Оформить заказ</button>
+    </div>
+
+    <!-- ЗАКАЗЫ -->
+    <div id="view-orders" class="hidden">
+      <div class="box">
+        <div class="box-title" id="ordersTitle">Заказы</div>
+        <div id="ordersList">Загрузка...</div>
+      </div>
+    </div>
+
+    <!-- АДМИНКА -->
+    <div id="view-admin" class="hidden">
+      <div class="box">
+        <div class="box-title">Статистика</div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-val" id="stRevenue">0</div>
+            <div class="stat-lbl">Выручка, ₽</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" id="stItems">0</div>
+            <div class="stat-lbl">Штук</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" id="stOrders">0</div>
+            <div class="stat-lbl">Заказов</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn secondary" onclick="loadStats()">Обновить</button>
+          <button class="btn danger" onclick="clearStats()">Сбросить</button>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="box-title">Товар (добавить / изменить)</div>
+        <input type="hidden" id="fId" />
+        <input class="field" type="text" id="fName" placeholder="Название товара" />
+        <input class="field" type="number" step="0.01" id="fPrice" placeholder="Цена, руб." />
+        <input class="field" type="number" id="fQty" placeholder="Количество, шт." value="10" />
+        <select class="field" id="fCat">
+          <option value="Жидкости">Жидкости</option>
+          <option value="Картриджи и Испарители">Картриджи и Испарители</option>
+          <option value="Устройства">Устройства</option>
+          <option value="Одноразки">Одноразки</option>
+          <option value="Разное">Разное</option>
+        </select>
+        <input class="field" type="text" id="fImg" placeholder="Ссылка на фото или загрузка ниже" />
+        <input class="field" type="file" id="fImgFile" accept="image/*" onchange="uploadImg()" />
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="saveProd()">Сохранить</button>
+          <button class="btn secondary" onclick="resetProdForm()">Очистить</button>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="box-title">Загрузка PDF-накладной</div>
+        <input class="field" type="file" id="fPdf" accept="application/pdf" />
+        <input class="field" type="number" id="fMarkup" placeholder="Наценка, руб." value="0" />
+        <button class="btn" onclick="uploadPdf()">Импортировать PDF</button>
+      </div>
+
+      <div class="box">
+        <div class="box-title">Рассылка пользователям</div>
+        <textarea class="field" id="fBroadcast" rows="3" placeholder="Текст сообщения..."></textarea>
+        <button class="btn" onclick="runBroadcast()">Отправить рассылку</button>
+      </div>
+
+      <div class="box">
+        <div class="box-title">Список товаров</div>
+        <div id="adminProdList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    const ADMIN_ID = 1318983685;
+    const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
+    const userId = tgUser ? Number(tgUser.id) : ADMIN_ID;
+    const username = tgUser && tgUser.username ? tgUser.username : (tgUser ? tgUser.first_name : 'admin');
+    const isAdmin = userId === ADMIN_ID;
+
+    document.getElementById('userBadge').textContent = isAdmin ? `Админ • @${username}` : `@${username}`;
+    if (isAdmin) {
+      document.getElementById('nav-admin').classList.remove('hidden');
+      document.getElementById('ordersTitle').textContent = 'Все заказы';
+    } else {
+      document.getElementById('ordersTitle').textContent = 'Мои подтверждённые заказы';
+    }
+
+    const CATEGORIES = ['Все', 'Жидкости', 'Картриджи и Испарители', 'Устройства', 'Одноразки', 'Разное'];
+    let activeCat = 'Все';
+    let catalog = [];
+    let cart = [];
+    let toastTimer = null;
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+    }
+
+    function setTab(tab) {
+      ['catalog', 'cart', 'orders', 'admin'].forEach(t => {
+        document.getElementById('view-' + t).classList.toggle('hidden', t !== tab);
+        document.getElementById('nav-' + t).classList.toggle('active', t === tab);
+      });
+      if (tab === 'cart') renderCart();
+      if (tab === 'orders') loadOrders();
+      if (tab === 'admin' && isAdmin) {
+                  loadStats();
+        renderAdminProds();
+      }
+    }
+
+    function renderChips() {
+      const wrap = document.getElementById('catChips');
+      wrap.innerHTML = CATEGORIES.map(c =>
+        `<button class="chip ${c === activeCat ? 'active' : ''}" onclick="pickCat('${c.replace(/'/g, "\\'")}')">${c}</button>`
+      ).join('');
+    }
+
+    function pickCat(c) {
+      activeCat = c;
+      renderChips();
+      renderCatalog();
+    }
+
+    async function fetchCatalog() {
+      try {
+        const r = await fetch('/api/products');
+        const data = await r.json();
+        catalog = Array.isArray(data) ? data : [];
+        renderCatalog();
+        if (isAdmin && !document.getElementById('view-admin').classList.contains('hidden')) {
+          renderAdminProds();
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки каталога');
+      }
+    }
+
+    function renderCatalog() {
+      const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+      const list = catalog.filter(p => {
+        const cat = p.category || 'Разное';
+        const okCat = activeCat === 'Все' || cat === activeCat;
+        const okQ = !q || String(p.name || '').toLowerCase().includes(q);
+        return okCat && okQ && Number(p.quantity || 0) > 0;
+      });
+
+      const grid = document.getElementById('catalogGrid');
+      if (!list.length) {
+        grid.innerHTML = '<div style="color:var(--muted);font-size:13px;">Товаров нет</div>';
+        return;
+      }
+
+      grid.innerHTML = list.map(p => `
+        <div class="card">
+          <div>
+            ${p.image_url
+              ? `<img class="thumb" src="${p.image_url}" alt="">`
+              : `<div class="thumb">Без фото</div>`}
+            <div class="cat-tag">${p.category || 'Разное'}</div>
+            <div class="name">${escapeHtml(p.name)}</div>
+            <div class="stock">В наличии: ${p.quantity} шт.</div>
+          </div>
+          <div>
+            <div class="price">${Number(p.price)} ₽</div>
+            <button class="btn" style="margin-top:6px;" onclick="addItem(${p.id})">В корзину</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[s]));
+    }
+
+    function addItem(id) {
+      const prod = catalog.find(p => Number(p.id) === Number(id));
+      if (!prod) return;
+      const maxQty = Number(prod.quantity || 0);
+      const existing = cart.find(i => Number(i.id) === Number(id));
+      if (existing) {
+        if (existing.cartQuantity >= maxQty) {
+          showToast('Достигнут лимит остатка');
+          return;
+        }
+        existing.cartQuantity += 1;
+      } else {
+        cart.push({
+          id: prod.id,
+          name: prod.name,
+          price: Number(prod.price),
+          cartQuantity: 1
+        });
+      }
+      updateBadge();
+      showToast('Добавлено в корзину');
+    }
+
+    function updateBadge() {
+      const totalQty = cart.reduce((acc, i) => acc + Number(i.cartQuantity || 0), 0);
+      document.getElementById('badgeCart').textContent = totalQty;
+    }
+
+    function renderCart() {
+      const box = document.getElementById('cartItems');
+      const btn = document.getElementById('btnOrder');
+      if (!cart.length) {
+        box.innerHTML = '<div style="color:var(--muted);font-size:13px;">Корзина пуста</div>';
+        btn.disabled = true;
+        return;
+      }
+      btn.disabled = false;
+      const sum = cart.reduce((acc, i) => acc + Number(i.price) * Number(i.cartQuantity), 0);
+
+      box.innerHTML = cart.map((item, idx) => `
+        <div class="item-row">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(item.name)}</div>
+            <div style="font-size:12px;color:var(--muted);">${item.price} ₽ × ${item.cartQuantity} = ${item.price * item.cartQuantity} ₽</div>
+          </div>
+          <div class="qty-ctrl">
+            <button class="btn secondary sm" onclick="stepQty(${idx}, -1)">−</button>
+            <span>${item.cartQuantity}</span>
+            <button class="btn secondary sm" onclick="stepQty(${idx}, 1)">+</button>
+          </div>
+        </div>
+      `).join('') + `
+        <div class="item-row">
+          <b>Итого</b>
+          <b style="color:var(--ok);font-size:15px;">${sum} ₽</b>
+        </div>
+      `;
+    }
+
+    function stepQty(idx, delta) {
+      const item = cart[idx];
+      if (!item) return;
+      const prod = catalog.find(p => Number(p.id) === Number(item.id));
+      const maxQty = prod ? Number(prod.quantity || 0) : 9999;
+      const next = item.cartQuantity + delta;
+      if (next <= 0) {
+        cart.splice(idx, 1);
+      } else if (next <= maxQty) {
+        item.cartQuantity = next;
+      } else {
+        showToast('Больше нет на складе');
+        return;
+      }
+      updateBadge();
+      renderCart();
+    }
+
+    async function sendOrder() {
+      if (!cart.length) return;
+      try {
+        const r = await fetch('/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, username, cart })
+        });
+        const data = await r.json();
+        if (data.success) {
+          cart = [];
+          updateBadge();
+          renderCart();
+          await fetchCatalog();
+          showToast(`Заказ #${data.order_id} отправлен`);
+        } else {
+          showToast(data.error || 'Ошибка заказа');
+        }
+      } catch (e) {
+        showToast('Сетевая ошибка при заказе');
+      }
+    }
+
+    async function loadOrders() {
+      const box = document.getElementById('ordersList');
+      box.innerHTML = 'Загрузка...';
+      try {
+        const url = isAdmin ? '/api/orders' : `/api/user-orders?user_id=${userId}`;
+        const r = await fetch(url);
+        const list = await r.json();
+        if (!Array.isArray(list) || !list.length) {
+          box.innerHTML = '<div style="color:var(--muted);font-size:13px;">Заказов нет</div>';
+          return;
+        }
+        box.innerHTML = list.map(o => `
+          <div class="item-row">
+            <div>
+              <b>#${o.id}</b> • <span style="color:var(--warn);">${escapeHtml(o.status)}</span>
+              ${isAdmin ? `<span style="color:var(--muted);">(@${escapeHtml(o.username || '')})</span>` : ''}
+              <div style="font-size:12px;color:var(--muted);white-space:pre-line;margin-top:3px;">${escapeHtml(o.items || '')}</div>
+            </div>
+            <b>${Number(o.total)} ₽</b>
+          </div>
+        `).join('');
+      } catch (e) {
+        box.innerHTML = '<div style="color:var(--err);font-size:13px;">Ошибка загрузки заказов</div>';
+      }
+            }
+
+    async function loadStats() {
+      try {
+        const r = await fetch('/api/admin-stats');
+        const s = await r.json();
+        document.getElementById('stRevenue').textContent = s.total_revenue ?? 0;
+        document.getElementById('stItems').textContent = s.items_sold ?? 0;
+        document.getElementById('stOrders').textContent = s.total_orders ?? 0;
+      } catch (e) {
+        showToast('Ошибка статистики');
+      }
+    }
+
+    async function clearStats() {
+      try {
+        const r = await fetch('/api/admin-stats/clear', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+          loadStats();
+          showToast('Статистика сброшена');
+        }
+      } catch (e) {
+        showToast('Ошибка сброса');
+      }
+    }
+
+    async function uploadImg() {
+      const file = document.getElementById('fImgFile').files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('image', file);
+      try {
+        const r = await fetch('/api/upload-image', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.image_url) {
+          document.getElementById('fImg').value = d.image_url;
+          showToast('Фото загружено');
+        } else {
+          showToast(d.error || 'Ошибка загрузки фото');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки фото');
+      }
+    }
+
+    function resetProdForm() {
+      document.getElementById('fId').value = '';
+      document.getElementById('fName').value = '';
+      document.getElementById('fPrice').value = '';
+      document.getElementById('fQty').value = '10';
+      document.getElementById('fCat').value = 'Жидкости';
+      document.getElementById('fImg').value = '';
+      document.getElementById('fImgFile').value = '';
+    }
+
+    async function saveProd() {
+      const id = document.getElementById('fId').value;
+      const name = document.getElementById('fName').value.trim();
+      const price = document.getElementById('fPrice').value;
+      const quantity = document.getElementById('fQty').value;
+      const category = document.getElementById('fCat').value;
+      const image_url = document.getElementById('fImg').value.trim();
+
+      if (!name || price === '') {
+        showToast('Укажите название и цену');
+        return;
+      }
+
+      try {
+        const payload = { name, price, quantity, category, image_url };
+        if (id) payload.id = id;
+        const r = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (d.success) {
+          resetProdForm();
+          await fetchCatalog();
+          renderAdminProds();
+          showToast('Товар сохранён');
+        } else {
+          showToast(d.error || 'Ошибка сохранения');
+        }
+      } catch (e) {
+        showToast('Ошибка сохранения товара');
+      }
+    }
+
+    function fillEdit(id) {
+      const p = catalog.find(x => Number(x.id) === Number(id));
+      if (!p) return;
+      document.getElementById('fId').value = p.id;
+      document.getElementById('fName').value = p.name || '';
+      document.getElementById('fPrice').value = p.price ?? '';
+      document.getElementById('fQty').value = p.quantity ?? 0;
+      document.getElementById('fCat').value = p.category || 'Разное';
+      document.getElementById('fImg').value = p.image_url || '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function removeProd(id) {
+      try {
+        const r = await fetch('/api/delete-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const d = await r.json();
+        if (d.success) {
+          await fetchCatalog();
+          renderAdminProds();
+          showToast('Товар удалён');
+        }
+      } catch (e) {
+        showToast('Ошибка удаления');
+      }
+    }
+
+    function renderAdminProds() {
+      const box = document.getElementById('adminProdList');
+      if (!catalog.length) {
+        box.innerHTML = '<div style="color:var(--muted);font-size:13px;">База пуста</div>';
+        return;
+      }
+      box.innerHTML = catalog.map(p => `
+        <div class="item-row">
+          <div>
+            <b>${escapeHtml(p.name)}</b>
+            <div style="font-size:12px;color:var(--muted);">${p.category || 'Разное'} • ${p.price} ₽ • ${p.quantity} шт.</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn secondary sm" onclick="fillEdit(${p.id})">Изм.</button>
+            <button class="btn danger sm" onclick="removeProd(${p.id})">×</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function uploadPdf() {
+      const file = document.getElementById('fPdf').files[0];
+      if (!file) {
+        showToast('Выберите PDF-файл');
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('markup_rubles', document.getElementById('fMarkup').value || 0);
+      try {
+        const r = await fetch('/api/upload-pdf', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) {
+          document.getElementById('fPdf').value = '';
+          await fetchCatalog();
+          renderAdminProds();
+          showToast(`Импортировано позиций: ${d.added}`);
+        } else {
+          showToast(d.error || 'Ошибка PDF');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки PDF');
+      }
+    }
+
+    async function runBroadcast() {
+      const message = document.getElementById('fBroadcast').value.trim();
+      if (!message) {
+        showToast('Введите текст рассылки');
+        return;
+      }
+      try {
+        const r = await fetch('/api/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        const d = await r.json();
+        if (d.success) {
+          document.getElementById('fBroadcast').value = '';
+          showToast(`Отправлено: ${d.sent}, ошибок: ${d.failed}`);
+        } else {
+          showToast(d.error || 'Ошибка рассылки');
+        }
+      } catch (e) {
+        showToast('Ошибка рассылки');
+      }
+    }
+
+    renderChips();
+    fetchCatalog();
+  </script>
+</body>
+</html>
