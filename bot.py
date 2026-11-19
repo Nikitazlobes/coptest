@@ -177,7 +177,9 @@ if TOKEN:
         print(f"Ошибка установки вебхука: {e}", flush=True)
 else:
     print("ВНИМАНИЕ: переменная BOT_TOKEN не задана!", flush=True)
-    @flask_app.route('/')
+
+
+@flask_app.route('/')
 def index():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(base_dir, 'index.html')
@@ -196,9 +198,7 @@ def webhook():
         bot.process_new_updates([update])
         return '', 200
     return 'Forbidden', 403
-
-
-@bot.message_handler(commands=['start'])
+    @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name or "Неизвестен"
