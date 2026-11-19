@@ -16,7 +16,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 # --- НАСТРОЙКИ ---
-TOKEN = os.environ.get('BOT_TOKEN', '')
+TOKEN = os.environ.get('BOT_TOKEN', '8200689571:AAGP6tOkzyXJNwIs7oYGnmm55YQrxkPRTlk')
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DATABASE_URL = os.environ.get('DATABASE_URL')
