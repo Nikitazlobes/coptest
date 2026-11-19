@@ -192,7 +192,7 @@
     .item-row:last-child { border-bottom: none; }
 
     .qty-ctrl { display: flex; align-items: center; gap: 6px; }
-      
+
     .field {
       width: 100%;
       padding: 9px 11px;
@@ -251,8 +251,7 @@
       <button class="nav-btn hidden" id="nav-admin" onclick="setTab('admin')">Админ</button>
     </div>
   </div>
-
-  <div class="wrap">
+    <div class="wrap">
     <!-- КАТАЛОГ -->
     <div id="view-catalog">
       <input class="search" type="text" id="searchInput" placeholder="Поиск по названию..." oninput="renderCatalog()" />
@@ -343,8 +342,7 @@
   </div>
 
   <div class="toast hidden" id="toast"></div>
-
-  <script>
+    <script>
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     if (tg) {
       tg.ready();
@@ -352,9 +350,10 @@
     }
 
     const ADMIN_ID = 1318983685;
+    const initDataRaw = tg && tg.initData ? tg.initData : '';
     const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
-    const userId = tgUser ? Number(tgUser.id) : ADMIN_ID;
-    const username = tgUser && tgUser.username ? tgUser.username : (tgUser ? tgUser.first_name : 'admin');
+    const userId = tgUser && tgUser.id ? Number(tgUser.id) : ADMIN_ID;
+    const username = tgUser && (tgUser.username || tgUser.first_name) ? (tgUser.username || tgUser.first_name) : 'admin';
     const isAdmin = userId === ADMIN_ID;
 
     document.getElementById('userBadge').textContent = isAdmin ? `Админ • @${username}` : `@${username}`;
@@ -363,6 +362,14 @@
       document.getElementById('ordersTitle').textContent = 'Все заказы';
     } else {
       document.getElementById('ordersTitle').textContent = 'Мои подтверждённые заказы';
+    }
+
+    function apiHeaders(extra = {}) {
+      const h = { ...extra };
+      if (initDataRaw) {
+        h['X-Telegram-Init-Data'] = initDataRaw;
+      }
+      return h;
     }
 
     const CATEGORIES = ['Все', 'Жидкости', 'Картриджи и Испарители', 'Устройства', 'Одноразки', 'Разное'];
@@ -387,7 +394,7 @@
       if (tab === 'cart') renderCart();
       if (tab === 'orders') loadOrders();
       if (tab === 'admin' && isAdmin) {
-                  loadStats();
+        loadStats();
         renderAdminProds();
       }
     }
@@ -407,14 +414,21 @@
 
     async function fetchCatalog() {
       try {
-        const r = await fetch('/api/products');
+        const r = await fetch(`/api/products?_=${Date.now()}`, {
+          cache: 'no-store',
+          headers: apiHeaders()
+        });
         const data = await r.json();
-        catalog = Array.isArray(data) ? data : [];
+        if (!r.ok || !Array.isArray(data)) {
+          throw new Error((data && data.error) || 'Ошибка ответа сервера');
+        }
+        catalog = data;
         renderCatalog();
         if (isAdmin && !document.getElementById('view-admin').classList.contains('hidden')) {
           renderAdminProds();
         }
       } catch (e) {
+        document.getElementById('catalogGrid').innerHTML = '<div style="color:var(--err);font-size:13px;">Ошибка связи с сервером базы данных.</div>';
         showToast('Ошибка загрузки каталога');
       }
     }
@@ -438,9 +452,9 @@
         <div class="card">
           <div>
             ${p.image_url
-              ? `<img class="thumb" src="${p.image_url}" alt="">`
+              ? `<img class="thumb" src="${escapeHtml(p.image_url)}" alt="">`
               : `<div class="thumb">Без фото</div>`}
-            <div class="cat-tag">${p.category || 'Разное'}</div>
+            <div class="cat-tag">${escapeHtml(p.category || 'Разное')}</div>
             <div class="name">${escapeHtml(p.name)}</div>
             <div class="stock">В наличии: ${p.quantity} шт.</div>
           </div>
@@ -540,8 +554,8 @@
       try {
         const r = await fetch('/api/order', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, username, cart })
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ user_id: userId, username, cart, initData: initDataRaw })
         });
         const data = await r.json();
         if (data.success) {
@@ -562,10 +576,13 @@
       const box = document.getElementById('ordersList');
       box.innerHTML = 'Загрузка...';
       try {
-        const url = isAdmin ? '/api/orders' : `/api/user-orders?user_id=${userId}`;
-        const r = await fetch(url);
+        const url = isAdmin ? `/api/orders?_=${Date.now()}` : `/api/user-orders?user_id=${userId}&_=${Date.now()}`;
+        const r = await fetch(url, { cache: 'no-store', headers: apiHeaders() });
         const list = await r.json();
-        if (!Array.isArray(list) || !list.length) {
+        if (!r.ok || !Array.isArray(list)) {
+          throw new Error((list && list.error) || 'Ошибка загрузки заказов');
+        }
+        if (!list.length) {
           box.innerHTML = '<div style="color:var(--muted);font-size:13px;">Заказов нет</div>';
           return;
         }
@@ -582,11 +599,11 @@
       } catch (e) {
         box.innerHTML = '<div style="color:var(--err);font-size:13px;">Ошибка загрузки заказов</div>';
       }
-            }
+    }
 
     async function loadStats() {
       try {
-        const r = await fetch('/api/admin-stats');
+        const r = await fetch(`/api/admin-stats?_=${Date.now()}`, { cache: 'no-store', headers: apiHeaders() });
         const s = await r.json();
         document.getElementById('stRevenue').textContent = s.total_revenue ?? 0;
         document.getElementById('stItems').textContent = s.items_sold ?? 0;
@@ -598,11 +615,17 @@
 
     async function clearStats() {
       try {
-        const r = await fetch('/api/admin-stats/clear', { method: 'POST' });
+        const r = await fetch('/api/admin-stats/clear', {
+          method: 'POST',
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ user_id: userId, initData: initDataRaw })
+        });
         const d = await r.json();
         if (d.success) {
           loadStats();
           showToast('Статистика сброшена');
+        } else {
+          showToast(d.error || 'Ошибка сброса');
         }
       } catch (e) {
         showToast('Ошибка сброса');
@@ -614,8 +637,10 @@
       if (!file) return;
       const fd = new FormData();
       fd.append('image', file);
+      fd.append('user_id', String(userId));
+      if (initDataRaw) fd.append('initData', initDataRaw);
       try {
-        const r = await fetch('/api/upload-image', { method: 'POST', body: fd });
+        const r = await fetch('/api/upload-image', { method: 'POST', headers: apiHeaders(), body: fd });
         const d = await r.json();
         if (d.image_url) {
           document.getElementById('fImg').value = d.image_url;
@@ -652,11 +677,11 @@
       }
 
       try {
-        const payload = { name, price, quantity, category, image_url };
+        const payload = { name, price, quantity, category, image_url, user_id: userId, initData: initDataRaw };
         if (id) payload.id = id;
         const r = await fetch('/api/products', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload)
         });
         const d = await r.json();
@@ -689,14 +714,16 @@
       try {
         const r = await fetch('/api/delete-product', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id })
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id, user_id: userId, initData: initDataRaw })
         });
         const d = await r.json();
         if (d.success) {
           await fetchCatalog();
           renderAdminProds();
           showToast('Товар удалён');
+        } else {
+          showToast(d.error || 'Ошибка удаления');
         }
       } catch (e) {
         showToast('Ошибка удаления');
@@ -713,7 +740,7 @@
         <div class="item-row">
           <div>
             <b>${escapeHtml(p.name)}</b>
-            <div style="font-size:12px;color:var(--muted);">${p.category || 'Разное'} • ${p.price} ₽ • ${p.quantity} шт.</div>
+            <div style="font-size:12px;color:var(--muted);">${escapeHtml(p.category || 'Разное')} • ${p.price} ₽ • ${p.quantity} шт.</div>
           </div>
           <div style="display:flex;gap:6px;">
             <button class="btn secondary sm" onclick="fillEdit(${p.id})">Изм.</button>
@@ -732,8 +759,10 @@
       const fd = new FormData();
       fd.append('file', file);
       fd.append('markup_rubles', document.getElementById('fMarkup').value || 0);
+      fd.append('user_id', String(userId));
+      if (initDataRaw) fd.append('initData', initDataRaw);
       try {
-        const r = await fetch('/api/upload-pdf', { method: 'POST', body: fd });
+        const r = await fetch('/api/upload-pdf', { method: 'POST', headers: apiHeaders(), body: fd });
         const d = await r.json();
         if (d.success) {
           document.getElementById('fPdf').value = '';
@@ -757,8 +786,8 @@
       try {
         const r = await fetch('/api/broadcast', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message })
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ message, user_id: userId, initData: initDataRaw })
         });
         const d = await r.json();
         if (d.success) {
