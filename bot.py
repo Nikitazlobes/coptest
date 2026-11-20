@@ -15,7 +15,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 # --- НАСТРОЙКИ ---
-TOKEN = '8200689571:AAGP6tOkzyXJNwIs7oYGnmm55YQrxkPRTlk'
+TOKEN = '8883222497:AAEBZoTJg6flq4CRV2-AakrY_4EJCYsGPKo'
 ADMIN_ID = 1318983685
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://coptest.onrender.com')
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -221,11 +221,11 @@ def send_welcome(message):
 
     markup = telebot.types.InlineKeyboardMarkup()
     web_app = telebot.types.WebAppInfo(url=RENDER_URL)
-    markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть магазин C-opt EST", web_app=web_app))
+    markup.add(telebot.types.InlineKeyboardButton("🛍 Открыть C-opt EST", web_app=web_app))
 
     bot.send_message(
         message.chat.id,
-        "👋 Добро пожаловать в оптовый магазин C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть витрину товаров.",
+        "👋 Добро пожаловать в C-opt EST!\n\nНажмите кнопку ниже, чтобы открыть.",
         reply_markup=markup
     )
 
